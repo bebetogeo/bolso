@@ -1,0 +1,13 @@
+Extrato de Conta Corrente;;;;;
+Agência: 1234-5;Conta: 67890-1;;;;
+;;;;;
+Data;Histórico;Docto.;Crédito (R$);Débito (R$);Saldo (R$)
+01/10/2026;SALDO ANTERIOR;;;;1.250,00
+05/10/2026;Proventos Prefeitura;123;3.200,00;;4.450,00
+07/10/2026;Pagto conta de água COPASA;456;;78,43;4.371,57
+09/10/2026;"Compra com Cartão - 09/10 SUPERMERCADO; EPA";789;;1.154,20;3.217,37
+11/10/2026;Pix - Enviado 11/10 Ana Paula;790;;250,00;2.967,37
+15/10/2026;Tarifa Pacote de Serviços;791;;32,50;2.934,87
+20/10/2026;Pix - Recebido José Carlos;792;90,00;;3.024,87
+;;;;;
+Total;;;3.290,00;1.515,13;

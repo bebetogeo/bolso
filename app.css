@@ -52,7 +52,7 @@ body.privado .valor { filter: blur(6px); user-select: none; transition: filter .
 .ic.ic-sm { font-size: 16px; opacity: .88 }
 .ic:hover { background: rgba(255,255,255,.15) }
 
-main { max-width: 760px; margin: 0 auto; padding-block: 16px calc(92px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+main { max-width: 760px; margin: 0 auto; padding-block: 16px calc(136px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
 .view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0 }
 .card-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px }
@@ -158,6 +158,7 @@ small { display: block; font-size: 12px; color: var(--mut); font-weight: 400 }
 .qcats { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px }
 .qchip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--ink) }
 .qchip:hover { border-color: var(--acc-2); background: var(--acc-soft) }
+.qchip.qchip-out { border-style: dashed; color: var(--acc-2) }
 
 .drop { position: relative; display: grid; place-items: center; border: 2px dashed var(--line); border-radius: 14px; padding: 28px 12px; text-align: center; color: var(--ink); cursor: pointer; font-size: 15px }
 .drop.sobre { border-color: var(--acc-2); background: var(--acc-soft) }
@@ -221,7 +222,7 @@ dialog::backdrop { background: rgba(5, 15, 16, .45) }
 @media (min-width: 900px) {
   body { padding-left: 208px }
   .top-in, main { max-width: 860px }
-  main { padding-bottom: 40px }
+  main { padding-bottom: 96px }
   .tabs { top: 0; right: auto; width: 208px; flex-direction: column; justify-content: flex-start; gap: 2px; border-top: 0; border-right: 1px solid var(--line); padding: 72px 10px 10px }
   .tabs button { flex: none; max-width: none; width: 100%; display: flex; align-items: center; gap: 12px; font-size: 14px; padding: 10px 12px; border-radius: 10px }
   .tabs button.on, .tabs button:hover { background: var(--acc-soft) }

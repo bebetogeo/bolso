@@ -1,8 +1,8 @@
 // Bolso — service worker: guarda o app no aparelho para abrir sem internet.
-// Abre sempre pela cópia guardada (rápido e offline) e, quando há internet, atualiza a cópia em segundo plano:
-// uma versão nova publicada aparece na abertura seguinte.
+// Busca sempre a versão mais recente quando há internet (atualizando a cópia salva)
+// e usa a cópia guardada no aparelho quando estiver offline.
 const CACHE = 'bolso-v1.1.2';
-const ARQUIVOS = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest'];
+const ARQUIVOS = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest', './icons/mask.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

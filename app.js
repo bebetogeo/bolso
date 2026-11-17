@@ -1,6 +1,6 @@
 'use strict';
 /* Bolso — controle financeiro pessoal. Tudo roda e fica guardado neste aparelho (IndexedDB). */
-const VERSAO = '1.1.0';
+const VERSAO = '1.1.1';
 
 // ───────────────────────── utilidades ─────────────────────────
 const $ = (s, r = document) => r.querySelector(s);
@@ -78,7 +78,6 @@ function detectarParcela(desc) {
   if (!m) return null;
   const atual = +m[1], total = +m[2];
   if (atual < 1 || total < 2 || total > 48 || atual > total) return null;
-  // Evita confundir datas (ex.: "15/11" ou "02/12" logo após palavra DATA/COMPRA EM)
   const antes = s.slice(Math.max(0, m.index - 10), m.index);
   if (/\b(?:DIA|DATA|EM)\s*$/.test(antes) && total <= 12) return null;
   const base = norm(s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length));
@@ -341,7 +340,6 @@ async function importarLote({ conta, itens }, opt = {}) {
     if (n <= (tem.get(k) || 0)) continue;
     if (it.fitid && n === 1 && fits.has(`${it.fitid}|${it.data}|${it.valor}`)) continue;
     const parc = detectarParcela(it.desc);
-    // Se havia uma parcela projetada para este mês e conta com mesmo valor, substitui pela real
     const mesIt = it.data.slice(0, 7);
     const idxProj = S.tx.findIndex(t => t.projecao && t.conta === c.id && t.data.startsWith(mesIt) && t.valor === it.valor && !projRemover.includes(t.id));
     let catHerdada = null;
@@ -409,7 +407,6 @@ function detectarTransferencias(novos) {
 
   for (const a of novos) {
     if (a.catManual) continue;
-    // 1. Transferência entre contas correntes
     if (ehConta(a.conta) && a.cat !== 'transf' && reT.test(norm(a.desc)) && S.catMap.transf) {
       const b = S.tx.find(t => t.id !== a.id && t.conta !== a.conta && ehConta(t.conta) && !t.catManual && t.cat !== 'transf' && t.valor === -a.valor && Math.abs(difDias(t.data, a.data)) <= 1 && reT.test(norm(t.desc)));
       if (b) {
@@ -418,7 +415,6 @@ function detectarTransferencias(novos) {
         continue;
       }
     }
-    // 2. Pagamento de fatura de cartão (débito na conta corrente <-> crédito no cartão)
     if ((ehConta(a.conta) || ehCartao(a.conta)) && a.cat !== 'fatura' && reFat.test(norm(a.desc)) && S.catMap.fatura) {
       const b = S.tx.find(t => t.id !== a.id && t.conta !== a.conta && !t.catManual && t.cat !== 'fatura' && t.valor === -a.valor && Math.abs(difDias(t.data, a.data)) <= 4 && ((ehConta(a.conta) && ehCartao(t.conta)) || (ehCartao(a.conta) && ehConta(t.conta))) && reFat.test(norm(t.desc)));
       if (b) {
@@ -531,7 +527,7 @@ function mediaTresMeses(refMes = mesAtual()) {
   if (meses.length) for (const c of S.cats) if (c.tipo === 'gasto') m[c.id] = Math.max(0, Math.round(meses.reduce((n, r) => n + (r.porCat[c.id] || 0), 0) / meses.length));
   return m;
 }
-function topCategoriasGasto(limite = 5) {
+function topCategoriasGasto(limite = 6) {
   const freq = {};
   for (const t of S.tx) if (t.valor < 0 && S.catMap[t.cat]?.tipo === 'gasto') freq[t.cat] = (freq[t.cat] || 0) + 1;
   return S.cats.filter(c => c.tipo === 'gasto').sort((a, b) => (freq[b.id] || 0) - (freq[a.id] || 0)).slice(0, limite);
@@ -680,11 +676,11 @@ function rLanc() {
   let ent = 0, sai = 0;
   for (const t of l) { const tp = tipoTx(t); if (tp === 'mov') continue; if (t.valor > 0) ent += t.valor; else sai -= t.valor; }
   $('#lancResumo').textContent = l.length ? `${plural(l.length, 'lançamento', 'lançamentos')}${busca ? ' em todos os meses' : ''} · saiu ${brl(sai)} · entrou ${brl(ent)}` : '';
-  const topCats = modoTriagem ? topCategoriasGasto(4) : [];
+  const topCats = modoTriagem ? topCategoriasGasto(6) : [];
   $('#lanc').innerHTML = l.slice(0, S.limite).map(t => {
     const c = S.catMap[t.cat];
     const parc = t.parcela || detectarParcela(t.desc);
-    const chips = modoTriagem ? `<div class="qcats">${(t.valor > 0 ? S.cats.filter(x => x.tipo === 'receita').slice(0, 3) : topCats).map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}">${esc(qc.nome)}</button>`).join('')}</div>` : '';
+    const chips = modoTriagem ? `<div class="qcats">${(t.valor > 0 ? S.cats.filter(x => x.tipo === 'receita').slice(0, 4) : topCats).map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}">${esc(qc.nome)}</button>`).join('')}<button type="button" class="qchip qchip-out" data-tx="${esc(t.id)}">+ Outra…</button></div>` : '';
     return `<li class="${t.projecao ? 'proj' : ''}" data-tx="${t.id}" role="button" tabindex="0"><span class="dia"><b>${t.data.slice(8, 10)}</b>${mesCurto(t.data.slice(0, 7))}</span>
       <span class="desc">${esc(t.desc)}</span><span class="valor ${t.valor > 0 ? 'pos' : ''}${c?.tipo === 'mov' ? ' apag' : ''}">${t.valor > 0 ? '+ ' : ''}${brl(Math.abs(t.valor))}</span>
       <span class="meta"><span class="meta-esq"><span class="tag${c ? (c.tipo === 'mov' ? ' mov' : '') : ' sem'}">${esc(c ? c.nome : 'Sem categoria')}</span>${parc ? `<span class="parc-tag">${parc.atual}/${parc.total}</span>` : ''}${t.projecao ? '<span class="parc-tag">previsto</span>' : ''}</span><span class="ct">${esc(S.contaMap[t.conta]?.nome || '')}</span></span>${chips}</li>`;

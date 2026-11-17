@@ -1,6 +1,6 @@
 'use strict';
 /* Bolso — controle financeiro pessoal. Tudo roda e fica guardado neste aparelho (IndexedDB). */
-const VERSAO = '1.2.0';
+const VERSAO = '1.3.0';
 
 // ───────────────────────── utilidades ─────────────────────────
 const $ = (s, r = document) => r.querySelector(s);
@@ -115,7 +115,7 @@ const DB = {
   limpar() { return this.op([...LOJAS, 'meta'], 'readwrite', t => { for (const s of [...LOJAS, 'meta']) t.objectStore(s).clear(); }); },
 };
 
-// ───────────────────────── estado ─────────────────────────
+// ───────────────────────── estado e mês de competência ─────────────────────────
 const S = { tx: [], contas: [], cats: [], regras: [], meta: {}, mes: mesAtual(), view: 'painel', limite: 200, catMap: {}, contaMap: {}, regrasOrd: [] };
 function indexar() {
   S.catMap = Object.fromEntries(S.cats.map(c => [c.id, c]));
@@ -125,6 +125,18 @@ function indexar() {
   treinarModelo();
 }
 const temDados = () => S.tx.length > 0;
+
+/** Retorna o mês de competência do lançamento (considera o dia de fechamento nos cartões de crédito). */
+function mesCompetencia(t) {
+  const m = t.data.slice(0, 7);
+  if (t.projecao) return m;
+  const c = S.contaMap[t.conta];
+  if (c && c.tipo === 'cartao' && c.fechamento > 0 && c.fechamento <= 31) {
+    const dia = +t.data.slice(8, 10);
+    if (dia >= c.fechamento) return addMes(m, 1);
+  }
+  return m;
+}
 
 // ───────────────────────── categorias e regras padrão ─────────────────────────
 const CATS_PADRAO = [
@@ -220,7 +232,6 @@ function treinarModelo() {
       IA.featTot[cat] = (IA.featTot[cat] || 0) + peso;
     }
   };
-  // 1. Priors leves vindos das regras padrão (evita partida a frio)
   for (const [cat, lista] of Object.entries(REGRAS_PADRAO)) {
     if (!S.catMap[cat] || S.catMap[cat].tipo === 'mov') continue;
     for (let t of lista.split('|')) {
@@ -230,7 +241,6 @@ function treinarModelo() {
       if (soTexto.length) somar(cat, soTexto, 0.35);
     }
   }
-  // 2. Histórico real do usuário (escolhas manuais têm peso 3x maior)
   for (const t of S.tx) {
     if (!t.cat || !S.catMap[t.cat]) continue;
     const peso = t.catManual ? 3.0 : 1.0;
@@ -258,7 +268,6 @@ function preverCategoria(desc, valor, conta, data) {
   const V = Math.max(1, IA.vocab.size);
   const pesoGlobal = Math.max(1, candidatas.reduce((n, c) => n + (IA.catPeso[c.id] || 0.2), 0));
 
-  // Bônus de vizinho mais próximo para recorrências/Pix com nome e valor semelhantes
   const bonusVizinho = {};
   if (sig.length) {
     for (const ex of IA.exManuais) {
@@ -291,7 +300,6 @@ function preverCategoria(desc, valor, conta, data) {
   const maxS = Math.max(...scores.map(x => x.score));
   const exps = scores.map(x => ({ cat: x.cat, e: Math.exp(Math.max(-25, x.score - maxS)) }));
   const somaE = exps.reduce((n, x) => n + x.e, 0) || 1;
-  // Calibração conservadora enquanto há poucos exemplos manuais no aparelho
   const fatorAmostra = Math.min(1, 0.55 + (IA.nManuais / 12) * 0.45);
   const top = exps
     .map(x => ({ cat: x.cat, conf: (x.e / somaE) * fatorAmostra }))
@@ -304,7 +312,6 @@ function preverCategoria(desc, valor, conta, data) {
 function categorizar(desc, valor, conta, data = '') {
   const n = norm(desc), pad = ` ${n} `;
   if (conta && conta.tipo === 'cartao' && valor > 0 && /\b(PAGAMENTO|PAGTO|PGTO|PAG)\b/.test(n)) return 'fatura';
-  // 1. Regras explícitas criadas pelo usuário têm prioridade absoluta
   for (const r of S.regrasOrd) {
     if (r.padrao) continue;
     if (r.sinal && Math.sign(valor) !== r.sinal) continue;
@@ -312,10 +319,8 @@ function categorizar(desc, valor, conta, data = '') {
     const ok = r.modo === 'w' ? pad.includes(` ${r.texto} `) : r.modo === 'p' ? pad.includes(` ${r.texto}`) : n.includes(r.texto);
     if (ok) return r.cat;
   }
-  // 2. Se o modelo pessoal já aprendeu um padrão muito forte (ex.: exceção de valor), aplica antes do padrão genérico
   const ia = IA.nManuais >= 3 ? preverCategoria(desc, valor, conta, data) : null;
   if (ia && ia.conf >= 0.85 && ia.cat) return ia.cat;
-  // 3. Regras padrão embutidas no app
   for (const r of S.regrasOrd) {
     if (!r.padrao) continue;
     if (r.sinal && Math.sign(valor) !== r.sinal) continue;
@@ -323,7 +328,6 @@ function categorizar(desc, valor, conta, data = '') {
     const ok = r.modo === 'w' ? pad.includes(` ${r.texto} `) : r.modo === 'p' ? pad.includes(` ${r.texto}`) : n.includes(r.texto);
     if (ok) return r.cat;
   }
-  // 4. Classificação automática pelo modelo quando a confiança é alta
   if (ia && ia.conf >= 0.78 && ia.cat) return ia.cat;
   return null;
 }
@@ -484,8 +488,9 @@ async function importarLote({ conta, itens }, opt = {}) {
     if (n <= (tem.get(k) || 0)) continue;
     if (it.fitid && n === 1 && fits.has(`${it.fitid}|${it.data}|${it.valor}`)) continue;
     const parc = detectarParcela(it.desc);
-    const mesIt = it.data.slice(0, 7);
-    const idxProj = S.tx.findIndex(t => t.projecao && t.conta === c.id && t.data.startsWith(mesIt) && t.valor === it.valor && !projRemover.includes(t.id));
+    const mesComp = (c.tipo === 'cartao' && c.fechamento > 0 && +it.data.slice(8, 10) >= c.fechamento)
+      ? addMes(it.data.slice(0, 7), 1) : it.data.slice(0, 7);
+    const idxProj = S.tx.findIndex(t => t.projecao && t.conta === c.id && t.data.startsWith(mesComp) && t.valor === it.valor && !projRemover.includes(t.id));
     let catHerdada = null;
     if (idxProj >= 0) {
       catHerdada = S.tx[idxProj].cat;
@@ -510,7 +515,7 @@ async function importarLote({ conta, itens }, opt = {}) {
   return {
     conta: c, criada, novos: novos.length, repetidos: itens.length - novos.length,
     semCat: novos.filter(t => !t.cat).length, pares, parcelados,
-    de: datas[0], ate: datas[datas.length - 1], ultimoMes: novos.map(t => t.data).sort().pop()?.slice(0, 7),
+    de: datas[0], ate: datas[datas.length - 1], ultimoMes: novos.map(mesCompetencia).sort().pop(),
   };
 }
 
@@ -522,10 +527,11 @@ async function projetarParcelas(listaTx) {
     if (!p || p.atual >= p.total || t.valor >= 0) continue;
     const base = detectarParcela(t.desc)?.base || norm(t.desc);
     const dia = +t.data.slice(8, 10);
+    const mesBase = mesCompetencia(t);
     for (let k = p.atual + 1; k <= p.total; k++) {
-      const mesFut = addMes(t.data.slice(0, 7), k - p.atual);
+      const mesFut = addMes(mesBase, k - p.atual);
       const dataFut = `${mesFut}-${p2(Math.min(dia, diasNoMes(mesFut)))}`;
-      const jaExiste = S.tx.some(x => x.conta === t.conta && x.data.startsWith(mesFut) && x.valor === t.valor && (x.parcela?.atual === k || norm(x.desc).includes(base.slice(0, 14))));
+      const jaExiste = S.tx.some(x => x.conta === t.conta && mesCompetencia(x) === mesFut && x.valor === t.valor && (x.parcela?.atual === k || norm(x.desc).includes(base.slice(0, 14))));
       if (jaExiste) continue;
       const descLimpa = t.desc.replace(/(\d{1,2})\s*(\/|DE)\s*(\d{1,2})/i, (_, a, sep, tot) => `${p2(k)}${sep}${tot}`);
       const novo = {
@@ -564,7 +570,7 @@ function detectarTransferencias(novos) {
       }
     }
     if ((ehConta(a.conta) || ehCartao(a.conta)) && a.cat !== 'fatura' && reFat.test(norm(a.desc)) && S.catMap.fatura) {
-      const b = S.tx.find(t => t.id !== a.id && t.conta !== a.conta && !t.catManual && t.cat !== 'fatura' && t.valor === -a.valor && Math.abs(difDias(t.data, a.data)) <= 4 && ((ehConta(a.conta) && ehCartao(t.conta)) || (ehCartao(a.conta) && ehConta(t.conta))) && reFat.test(norm(t.desc)));
+      const b = S.tx.find(t => t.id !== a.id && t.conta !== a.conta && !t.catManual && t.cat !== 'fatura' && t.valor === -a.valor && Math.abs(difDias(t.data, a.data)) <= 4 && ((ehConta(a.conta) && ehCartao(t.conta)) || (ehCartao(a.conta) && ehConta(t.conta))) && reFat.test(norm(a.desc)));
       if (b) {
         a.cat = b.cat = 'fatura'; a.catManual = b.catManual = true; n++;
         if (!novos.includes(b)) DB.gravar('tx', b);
@@ -572,6 +578,54 @@ function detectarTransferencias(novos) {
     }
   }
   return n;
+}
+
+/** Identifica contas fixas/assinaturas recorrentes (não parceladas) e sinaliza as que ainda não caíram no mês. */
+function detectarRecorrencias(mesAlvo) {
+  const ocultas = new Set(S.meta.fixasOcultas || []);
+  const grupos = new Map();
+  for (const t of S.tx) {
+    if (t.valor >= 0 || t.projecao || t.parcela || detectarParcela(t.desc)) continue;
+    const tp = tipoTx(t);
+    if (tp === 'mov') continue;
+    const { sig } = extrairFeatures(t.desc, t.valor, null, '');
+    const chave = (sig.slice(0, 2).join('_') || norm(t.desc).slice(0, 18));
+    if (chave.length < 3) continue;
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(t);
+  }
+  const pendentes = [];
+  for (const [chave, lista] of grupos) {
+    if (ocultas.has(chave)) continue;
+    const porMes = new Map();
+    for (const t of lista) {
+      const mc = mesCompetencia(t);
+      if (mc > mesAlvo) continue;
+      if (!porMes.has(mc)) porMes.set(mc, []);
+      porMes.get(mc).push(t);
+    }
+    const anteriores = [...porMes.keys()].filter(m => m < mesAlvo).sort();
+    if (anteriores.length < 2) continue;
+    const ultMes = anteriores[anteriores.length - 1];
+    if (difDias(`${mesAlvo}-15`, `${ultMes}-15`) > 45) continue;
+
+    const valsAnt = anteriores.slice(-3).map(m => porMes.get(m).reduce((n, x) => n - x.valor, 0));
+    const media = Math.round(valsAnt.reduce((n, v) => n + v, 0) / valsAnt.length);
+    const maxVar = Math.max(...valsAnt.map(v => Math.abs(v - media) / Math.max(100, media)));
+    if (maxVar > 0.28) continue;
+
+    const noMes = porMes.get(mesAlvo) || [];
+    const amostra = porMes.get(ultMes)[0];
+    if (!noMes.length) {
+      pendentes.push({ chave, desc: amostra.desc, valor: media, cat: amostra.cat, dia: +amostra.data.slice(8, 10), aumento: 0 });
+    } else {
+      const pago = noMes.reduce((n, x) => n - x.valor, 0);
+      if (pago > media * 1.12 && (pago - media) >= 500) {
+        pendentes.push({ chave, desc: noMes[0].desc, valor: pago, cat: noMes[0].cat, dia: +noMes[0].data.slice(8, 10), aumento: pago - media, pago: true });
+      }
+    }
+  }
+  return pendentes.sort((a, b) => (a.pago ? 1 : 0) - (b.pago ? 1 : 0) || a.dia - b.dia);
 }
 
 let csvResolver = null, ultimosParcelados = [];
@@ -659,10 +713,16 @@ const tipoTx = t => S.catMap[t.cat]?.tipo || 'sem';
 function resumo(mes) {
   const r = { entrou: 0, saiu: 0, porCat: {}, semN: 0, semGasto: 0, nEntradas: 0, gastos: [], n: 0 };
   for (const t of S.tx) {
-    if (!t.data.startsWith(mes)) continue;
+    if (mesCompetencia(t) !== mes) continue;
     r.n++;
     const tp = tipoTx(t);
     if (tp === 'mov') continue;
+    // Entrada marcada como abatimento de gasto (ex.: reembolso/rachadinha) reduz a categoria em vez de inflar receita
+    if (t.valor > 0 && t.abaterCat && S.catMap[t.abaterCat]?.tipo === 'gasto') {
+      r.saiu -= t.valor;
+      r.porCat[t.abaterCat] = (r.porCat[t.abaterCat] || 0) - t.valor;
+      continue;
+    }
     if (tp === 'receita') { r.entrou += t.valor; if (t.valor > 0) r.nEntradas++; }
     else if (tp === 'gasto') { r.saiu -= t.valor; r.porCat[t.cat] = (r.porCat[t.cat] || 0) - t.valor; if (t.valor < 0) r.gastos.push(t); }
     else { r.semN++; if (t.valor > 0) { r.entrou += t.valor; r.nEntradas++; } else { r.saiu -= t.valor; r.semGasto -= t.valor; r.gastos.push(t); } }
@@ -709,14 +769,16 @@ function rPainel() {
   $('#kSaiuSub').textContent = sub;
   $('#kSobraSub').textContent = sobra < 0 ? 'saiu mais do que entrou' : r.entrou > 0 ? `${Math.round(sobra / r.entrou * 100)}% do que entrou` : '';
 
-  // faixa de saldos/movimento por conta
+  // faixa de saldos (com suporte a saldo inicial de referência) e faturas por conta
   const strip = $('#contasStrip');
   if (strip) {
     const porConta = S.contas.map(c => {
-      const soma = S.tx.filter(t => t.conta === c.id && t.data <= `${S.mes}-31`).reduce((n, t) => n + t.valor, 0);
-      const mesMov = S.tx.filter(t => t.conta === c.id && t.data.startsWith(S.mes) && t.valor < 0).reduce((n, t) => n - t.valor, 0);
+      const baseIni = c.saldoIni || 0;
+      const dataIni = c.saldoData || '0000-01-01';
+      const soma = baseIni + S.tx.filter(t => t.conta === c.id && !t.projecao && t.data >= dataIni && t.data <= `${S.mes}-31`).reduce((n, t) => n + t.valor, 0);
+      const mesMov = S.tx.filter(t => t.conta === c.id && mesCompetencia(t) === S.mes && t.valor < 0).reduce((n, t) => n - t.valor, 0);
       return { c, soma, mesMov };
-    }).filter(x => S.tx.some(t => t.conta === x.c.id));
+    }).filter(x => S.tx.some(t => t.conta === x.c.id) || x.c.saldoIni);
     strip.hidden = porConta.length < 1;
     strip.innerHTML = porConta.map(({ c, soma, mesMov }) => `<div class="conta-pill" data-filtraconta="${esc(c.id)}" role="button" tabindex="0">
       <span class="cn">${esc(c.nome)}</span>
@@ -724,14 +786,29 @@ function rPainel() {
     </div>`).join('');
   }
 
+  // radar de contas fixas e assinaturas no mês atual
+  const cFix = $('#cardFixas');
+  if (cFix) {
+    const recs = S.mes === mesAtual() ? detectarRecorrencias(S.mes) : [];
+    if (!recs.length) { cFix.hidden = true; }
+    else {
+      const pend = recs.filter(x => !x.pago);
+      const totPend = pend.reduce((n, x) => n + x.valor, 0);
+      cFix.hidden = false;
+      cFix.innerHTML = `<div class="card-h"><h2>Contas fixas e assinaturas</h2><span class="mut">${pend.length ? `faltam ${brl(totPend)}` : 'alerta de reajuste'}</span></div>
+        <ul class="fixas-lista">${recs.slice(0, 6).map(x => `<li><span class="fn">${esc(x.desc)}<small>${x.pago ? 'já caiu neste mês' : `previsto por volta do dia ${p2(x.dia)}`}${x.cat && S.catMap[x.cat] ? ` · ${esc(S.catMap[x.cat].nome)}` : ''}</small></span>
+          <span class="fv"><span class="num">${brl(x.valor)}</span>${x.aumento ? `<span class="tag-alta">↑ ${brl0(x.aumento)}</span>` : ''}<button type="button" class="x" data-ocultarfixa="${esc(x.chave)}" title="Não lembrar esta cobrança" aria-label="Ocultar">×</button></span></li>`).join('')}</ul>`;
+    }
+  }
+
   // compromissos parcelados nos próximos meses
   const cf = $('#cardFuturo');
   if (cf) {
-    const fut = S.tx.filter(t => t.projecao && t.data.slice(0, 7) > S.mes && t.valor < 0);
+    const fut = S.tx.filter(t => t.projecao && mesCompetencia(t) > S.mes && t.valor < 0);
     if (!fut.length) { cf.hidden = true; }
     else {
       const proxMes = addMes(S.mes, 1);
-      const totProx = fut.filter(t => t.data.startsWith(proxMes)).reduce((n, t) => n - t.valor, 0);
+      const totProx = fut.filter(t => mesCompetencia(t) === proxMes).reduce((n, t) => n - t.valor, 0);
       const totGeral = fut.reduce((n, t) => n - t.valor, 0);
       cf.hidden = false;
       cf.innerHTML = `<div class="card-h"><h2>Parcelas futuras projetadas</h2><button class="lnk" data-mes="${proxMes}">Ver ${mesSo(proxMes)}</button></div>
@@ -802,9 +879,9 @@ function filtrados() {
   const q = norm($('#busca').value), qv = $('#busca').value.trim().replace(/^R\$\s*/i, '').replace('.', ','), fc = $('#fCat').value, fa = $('#fConta').value, sem = $('#fSem').checked;
   const busca = $('#busca').value.trim() !== '';
   return S.tx.filter(t => {
-    if (!busca && !t.data.startsWith(S.mes)) return false;
+    if (!busca && mesCompetencia(t) !== S.mes) return false;
     if (sem && S.catMap[t.cat]) return false;
-    if (fc && (fc === '__sem' ? S.catMap[t.cat] : t.cat !== fc)) return false;
+    if (fc && (fc === '__sem' ? S.catMap[t.cat] : (t.cat !== fc && t.abaterCat !== fc))) return false;
     if (fa && t.conta !== fa) return false;
     if (busca) {
       const v = fmtNum.format(Math.abs(t.valor) / 100);
@@ -832,16 +909,25 @@ function rLanc() {
   const l = filtrados(), busca = $('#busca').value.trim() !== '', modoTriagem = ($('#fSem').checked || $('#fCat').value === '__sem') && l.length > 0;
   if ($('#barTriagem')) $('#barTriagem').hidden = !modoTriagem;
   let ent = 0, sai = 0;
-  for (const t of l) { const tp = tipoTx(t); if (tp === 'mov') continue; if (t.valor > 0) ent += t.valor; else sai -= t.valor; }
+  for (const t of l) {
+    const tp = tipoTx(t);
+    if (tp === 'mov') continue;
+    if (t.valor > 0 && t.abaterCat && S.catMap[t.abaterCat]?.tipo === 'gasto') { sai -= t.valor; continue; }
+    if (t.valor > 0) ent += t.valor; else sai -= t.valor;
+  }
   $('#lancResumo').textContent = l.length ? `${plural(l.length, 'lançamento', 'lançamentos')}${busca ? ' em todos os meses' : ''} · saiu ${brl(sai)} · entrou ${brl(ent)}` : '';
   const topCats = modoTriagem ? topCategoriasGasto(6) : [];
   $('#lanc').innerHTML = l.slice(0, S.limite).map(t => {
     const c = S.catMap[t.cat];
+    const mc = mesCompetencia(t);
     const parc = t.parcela || detectarParcela(t.desc);
     const chips = modoTriagem ? montarChipsTriagem(t, topCats) : '';
+    const tagAbate = t.valor > 0 && t.abaterCat && S.catMap[t.abaterCat]
+      ? `<span class="tag">abate ${esc(S.catMap[t.abaterCat].nome)}</span>`
+      : `<span class="tag${c ? (c.tipo === 'mov' ? ' mov' : '') : ' sem'}">${esc(c ? c.nome : 'Sem categoria')}</span>`;
     return `<li class="${t.projecao ? 'proj' : ''}" data-tx="${t.id}" role="button" tabindex="0"><span class="dia"><b>${t.data.slice(8, 10)}</b>${mesCurto(t.data.slice(0, 7))}</span>
       <span class="desc">${esc(t.desc)}</span><span class="valor ${t.valor > 0 ? 'pos' : ''}${c?.tipo === 'mov' ? ' apag' : ''}">${t.valor > 0 ? '+ ' : ''}${brl(Math.abs(t.valor))}</span>
-      <span class="meta"><span class="meta-esq"><span class="tag${c ? (c.tipo === 'mov' ? ' mov' : '') : ' sem'}">${esc(c ? c.nome : 'Sem categoria')}</span>${parc ? `<span class="parc-tag">${parc.atual}/${parc.total}</span>` : ''}${t.projecao ? '<span class="parc-tag">previsto</span>' : ''}</span><span class="ct">${esc(S.contaMap[t.conta]?.nome || '')}</span></span>${chips}</li>`;
+      <span class="meta"><span class="meta-esq">${tagAbate}${parc ? `<span class="parc-tag">${parc.atual}/${parc.total}</span>` : ''}${t.projecao ? '<span class="parc-tag">previsto</span>' : ''}${mc !== t.data.slice(0, 7) ? `<span class="parc-tag">fatura ${mesCurto(mc)}</span>` : ''}</span><span class="ct">${esc(S.contaMap[t.conta]?.nome || '')}</span></span>${chips}</li>`;
   }).join('') || `<li class="vazia">${temDados() ? 'Nenhum lançamento com esses filtros' + (busca ? '.' : ` em ${mesLongo(S.mes)}.`) : 'Ainda não há lançamentos. Importe um extrato ou adicione um lançamento manual.'}</li>`;
   $('#lancMais').hidden = l.length <= S.limite;
 }
@@ -864,7 +950,10 @@ function rAjustes() {
   $('#tema').value = S.meta.tema || 'auto';
   const nTx = id => S.tx.filter(t => t.conta === id).length;
   const tipoC = { conta: 'conta corrente', cartao: 'cartão de crédito', dinheiro: 'dinheiro' };
-  $('#contas').innerHTML = S.contas.map(c => `<li data-conta="${c.id}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${tipoC[c.tipo] || ''} · ${plural(nTx(c.id), 'lançamento', 'lançamentos')}</small></span><span class="seta">›</span></li>`).join('') || '<li class="mut">Nenhuma conta ainda.</li>';
+  $('#contas').innerHTML = S.contas.map(c => {
+    const ext = c.tipo === 'cartao' && c.fechamento ? ` · fecha dia ${p2(c.fechamento)}` : c.saldoIni ? ` · saldo ini. ${brl0(c.saldoIni)}` : '';
+    return `<li data-conta="${c.id}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${tipoC[c.tipo] || ''}${ext} · ${plural(nTx(c.id), 'lançamento', 'lançamentos')}</small></span><span class="seta">›</span></li>`;
+  }).join('') || '<li class="mut">Nenhuma conta ainda.</li>';
   const minhas = S.regras.filter(r => !r.padrao), pad = S.regras.filter(r => r.padrao).sort((a, b) => (S.catMap[a.cat]?.ordem ?? 99) - (S.catMap[b.cat]?.ordem ?? 99) || a.texto.localeCompare(b.texto));
   const li = r => `<li><span><b>${esc(r.texto)}</b> → ${esc(S.catMap[r.cat]?.nome || '?')}${r.sinal ? `<small>${r.sinal > 0 ? 'só entradas' : 'só saídas'}</small>` : ''}</span><button class="x" data-del-regra="${esc(r.id)}" aria-label="Excluir regra ${esc(r.texto)}">×</button></li>`;
   $('#regras').innerHTML = minhas.map(li).join('') || '<li class="mut">Você ainda não criou regras fixas. Elas aparecem aqui quando você salva uma regra.</li>';
@@ -936,6 +1025,7 @@ async function editarTx(id) {
   const dicaIA = pred && pred.cat && pred.conf >= 0.25 && S.catMap[pred.cat]
     ? `<p class="mut" style="margin:-4px 0 0">✦ Sugestão inteligente: <b>${esc(S.catMap[pred.cat].nome)}</b> (${Math.round(pred.conf * 100)}%) <button type="button" class="lnk" id="btnUsarIA" data-catia="${esc(pred.cat)}">aplicar</button></p>`
     : '';
+  const opcoesAbate = '<option value="">Não (contar como entrada normal)</option>' + S.cats.filter(c => c.tipo === 'gasto').map(c => `<option value="${esc(c.id)}"${t.abaterCat === c.id ? ' selected' : ''}>${esc(c.nome)}</option>`).join('');
   const acoesExtras = !novo ? `<div class="row" style="margin-top:4px">
     <button type="button" class="btn sm" id="btnSplitTx">Dividir valor</button>
     ${parc && parc.atual < parc.total && t.valor < 0 ? `<button type="button" class="btn sm" id="btnProjTx">Projetar parcelas (${parc.atual + 1}/${parc.total} a ${parc.total}/${parc.total})</button>` : ''}
@@ -949,10 +1039,18 @@ async function editarTx(id) {
       <label>Valor (R$)<input name="valor" required inputmode="decimal" placeholder="0,00" value="${t.valor ? fmtNum.format(Math.abs(t.valor) / 100) : ''}"></label></div>
       <div class="grid2"><label>Data<input type="date" name="data" required value="${t.data}"></label>
       <label>Conta<select name="conta"${!t.manual ? ' disabled' : ''}>${S.contas.map(c => `<option value="${c.id}"${c.id === t.conta ? ' selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label></div>
-      <label>Categoria<select name="cat">${opcoesCat(S.catMap[t.cat] ? t.cat : '', 'Sem categoria')}</select></label>${dicaIA}
+      <label id="lblCatTx">Categoria<select name="cat">${opcoesCat(S.catMap[t.cat] ? t.cat : '', 'Sem categoria')}</select></label>${dicaIA}
+      <label id="lblAbateTx"${t.valor > 0 ? '' : ' hidden'}>Abater de um gasto (estorno / rachadinha)<select name="abaterCat">${opcoesAbate}</select></label>
       <label>Observação (opcional)<input name="nota" maxlength="120" value="${esc(t.nota || '')}"></label>${acoesExtras}`,
     aoAbrir: d => {
       if (novo) $('[name=desc]', d).focus(); else $('[name=cat]', d).focus();
+      const selSinal = $('[name=sinal]', d), lblAb = $('#lblAbateTx', d), selAb = $('[name=abaterCat]', d), lblCat = $('#lblCatTx', d);
+      const syncAbate = () => {
+        const ehEnt = selSinal.value === '1';
+        lblAb.hidden = !ehEnt;
+        lblCat.hidden = ehEnt && !!selAb.value;
+      };
+      selSinal.onchange = syncAbate; selAb.onchange = syncAbate; syncAbate();
       $('#btnUsarIA', d)?.addEventListener('click', e => { $('[name=cat]', d).value = e.target.dataset.catia; e.target.parentElement.remove(); });
       $('#btnSplitTx', d)?.addEventListener('click', () => { d.close('cancel'); dividirTx(t); });
       $('#btnProjTx', d)?.addEventListener('click', async () => {
@@ -970,18 +1068,24 @@ async function editarTx(id) {
   }
   const v = parseValor(r.valor, ',');
   if (!Number.isFinite(v) || v === 0) { toast('Não entendi o valor. Use algo como 45,90'); return; }
-  const catAntes = t.cat;
-  Object.assign(t, { desc: r.desc.trim(), valor: Math.abs(v) * +r.sinal, data: r.data || t.data, cat: r.cat || null, nota: (r.nota || '').trim() });
+  const catAntes = t.cat, abateAntes = t.abaterCat || '';
+  const ehEntrada = +r.sinal > 0;
+  const abater = ehEntrada && r.abaterCat ? r.abaterCat : null;
+  Object.assign(t, {
+    desc: r.desc.trim(), valor: Math.abs(v) * +r.sinal, data: r.data || t.data,
+    cat: abater ? null : (r.cat || null), nota: (r.nota || '').trim(),
+  });
+  if (abater) t.abaterCat = abater; else delete t.abaterCat;
   const pNovo = detectarParcela(t.desc);
   if (pNovo) t.parcela = { atual: pNovo.atual, total: pNovo.total }; else delete t.parcela;
   if (t.manual && r.conta) t.conta = r.conta;
   if (novo) { t.id = uid(); t.fitid = ''; t.catManual = true; S.tx.push(t); }
-  else if (t.cat !== catAntes) t.catManual = true;
+  else if (t.cat !== catAntes || (t.abaterCat || '') !== abateAntes) t.catManual = true;
   await DB.gravar('tx', t);
   const autoExtras = t.cat !== catAntes ? await reaplicarRegras() : 0;
   if (S.meta.exemplo === undefined && novo && !S.meta.primeiraImportacao) await DB.meta('primeiraImportacao', hoje());
   render();
-  if (!novo && t.cat && t.cat !== catAntes && !t.manual) await oferecerRegra(t);
+  if (!novo && !abater && t.cat && t.cat !== catAntes && !t.manual) await oferecerRegra(t);
   else toast(novo ? 'Lançamento adicionado' : `Lançamento salvo${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
 }
 async function oferecerRegra(t) {
@@ -1015,10 +1119,25 @@ async function criarRegra(texto, cat, aplicar) {
 async function editarConta(id) {
   const c = S.contaMap[id]; if (!c) return;
   const n = S.tx.filter(t => t.conta === id).length;
+  const saldoStr = c.saldoIni ? fmtNum.format(c.saldoIni / 100) : '';
   const r = await dialogo({
     titulo: 'Conta', extra: 'Excluir',
     corpo: `<label>Nome<input name="nome" required maxlength="40" value="${esc(c.nome)}"></label>
-      <label>Tipo<select name="tipo"><option value="conta">Conta corrente</option><option value="cartao"${c.tipo === 'cartao' ? ' selected' : ''}>Cartão de crédito</option><option value="dinheiro"${c.tipo === 'dinheiro' ? ' selected' : ''}>Dinheiro</option></select></label>`,
+      <label>Tipo<select name="tipo"><option value="conta">Conta corrente</option><option value="cartao"${c.tipo === 'cartao' ? ' selected' : ''}>Cartão de crédito</option><option value="dinheiro"${c.tipo === 'dinheiro' ? ' selected' : ''}>Dinheiro</option></select></label>
+      <label id="lblFechamento"${c.tipo === 'cartao' ? '' : ' hidden'}>Dia de fechamento da fatura (opcional)<input type="number" name="fechamento" min="1" max="31" placeholder="Ex.: 25" value="${c.fechamento || ''}"></label>
+      <div class="grid2" id="boxSaldoIni"${c.tipo === 'cartao' ? ' hidden' : ''}>
+        <label>Saldo inicial (R$)<input name="saldoIni" inputmode="decimal" placeholder="0,00" value="${saldoStr}"></label>
+        <label>A partir de<input type="date" name="saldoData" value="${c.saldoData || ''}"></label>
+      </div>`,
+    aoAbrir: d => {
+      const sel = $('[name=tipo]', d);
+      const sync = () => {
+        const cc = sel.value === 'cartao';
+        $('#lblFechamento', d).hidden = !cc;
+        $('#boxSaldoIni', d).hidden = cc;
+      };
+      sel.onchange = sync;
+    },
   });
   if (!r) return;
   if (r._acao === 'extra') {
@@ -1027,7 +1146,15 @@ async function editarConta(id) {
     S.tx = S.tx.filter(t => t.conta !== id); S.contas = S.contas.filter(x => x.id !== id);
     await DB.apagar('tx', ids); await DB.apagar('contas', id); indexar(); toast('Conta excluída'); return render();
   }
-  c.nome = r.nome.trim() || c.nome; c.tipo = r.tipo; await DB.gravar('contas', c); indexar();
+  c.nome = r.nome.trim() || c.nome; c.tipo = r.tipo;
+  const fech = parseInt(r.fechamento, 10);
+  if (c.tipo === 'cartao' && fech >= 1 && fech <= 31) c.fechamento = fech; else delete c.fechamento;
+  const sIni = r.saldoIni ? parseValor(r.saldoIni, ',') : NaN;
+  if (c.tipo !== 'cartao' && Number.isFinite(sIni) && sIni !== 0) {
+    c.saldoIni = sIni;
+    c.saldoData = r.saldoData || '0000-01-01';
+  } else { delete c.saldoIni; delete c.saldoData; }
+  await DB.gravar('contas', c); indexar();
   await reaplicarRegras(); render();
 }
 async function editarCat(id) {
@@ -1071,7 +1198,7 @@ async function restaurarCopia(arq) {
 }
 function exportarCSV() {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
-  const l = [...S.tx].sort((a, b) => a.data.localeCompare(b.data)).map(t => [dataBRa(t.data), q(t.desc), fmtNum.format(t.valor / 100).replace(/\./g, ''), q(S.catMap[t.cat]?.nome || ''), q(S.contaMap[t.conta]?.nome || ''), q(t.nota || '')].join(';'));
+  const l = [...S.tx].sort((a, b) => a.data.localeCompare(b.data)).map(t => [dataBRa(t.data), q(t.desc), fmtNum.format(t.valor / 100).replace(/\./g, ''), q(S.catMap[t.cat]?.nome || (t.abaterCat ? `Abate: ${S.catMap[t.abaterCat]?.nome || ''}` : '')), q(S.contaMap[t.conta]?.nome || ''), q(t.nota || '')].join(';'));
   baixar(`bolso-lancamentos-${hoje()}.csv`, '\ufeffData;Descrição;Valor;Categoria;Conta;Observação\r\n' + l.join('\r\n'), 'text/csv;charset=utf-8');
 }
 async function apagarTudo(silencioso) {
@@ -1164,6 +1291,15 @@ function ligar() {
       toast(`Classificado em ${S.catMap[t.cat]?.nome || 'categoria'}${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
       return;
     }
+    const ocFixa = e.target.closest('[data-ocultarfixa]');
+    if (ocFixa) {
+      e.stopPropagation();
+      const lista = new Set(S.meta.fixasOcultas || []);
+      lista.add(ocFixa.dataset.ocultarfixa);
+      await DB.meta('fixasOcultas', [...lista]);
+      render();
+      return;
+    }
     const el = e.target.closest('[data-go],[data-revisar],[data-projparc],[data-tx],[data-cat],[data-filtraconta],[data-mes],[data-conta],[data-catedit],[data-del-regra],[data-sug]');
     if (!el) return;
     const d = el.dataset;
@@ -1239,8 +1375,8 @@ function ligar() {
 // ───────────────────────── início ─────────────────────────
 function ultimoMesComDados() {
   if (!S.tx.length) return mesAtual();
-  const ma = mesAtual(); if (S.tx.some(t => t.data.startsWith(ma) && !t.projecao)) return ma;
-  const m = S.tx.filter(t => !t.projecao).map(t => t.data.slice(0, 7)).filter(x => x <= ma).sort().pop();
+  const ma = mesAtual(); if (S.tx.some(t => mesCompetencia(t) === ma && !t.projecao)) return ma;
+  const m = S.tx.filter(t => !t.projecao).map(mesCompetencia).filter(x => x <= ma).sort().pop();
   return m || ma;
 }
 async function carregar() {

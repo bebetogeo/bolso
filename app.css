@@ -39,7 +39,15 @@ p { margin: 0 0 10px }
 .num, .valor { font-family: var(--f-num); font-variant-numeric: tabular-nums }
 
 body.privado .num,
-body.privado .valor { filter: blur(6px); user-select: none; transition: filter .15s }
+body.privado .valor,
+body.privado input[data-orc] {
+  display: inline-block;
+  -webkit-filter: blur(7px);
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter .15s;
+}
 
 .top { position: sticky; top: 0; z-index: 5; background: var(--top-bg); color: var(--top-ink); border-bottom: 1px solid var(--top-line); padding-top: env(safe-area-inset-top, 0px) }
 .top-in { max-width: 760px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)) }
@@ -89,12 +97,12 @@ label.chk input { width: auto; flex: none }
 .pos { color: var(--pos) } .neg { color: var(--neg) }
 @media (max-width: 480px) { .kpis { grid-template-columns: 1fr 1fr } .kpi:last-child { grid-column: 1 / -1 } .kpi .num { font-size: 18px } }
 
-.contas-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none }
+.contas-strip { display: flex; gap: 8px; overflow-x: auto; padding: 1px 1px 3px; scrollbar-width: none; scroll-padding-inline: 1px }
 .contas-strip::-webkit-scrollbar { display: none }
-.conta-pill { flex: 0 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; display: grid; gap: 1px; cursor: pointer; min-width: 135px }
+.conta-pill { flex: 1 1 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; display: grid; gap: 2px; cursor: pointer; min-width: 142px }
 .conta-pill:hover { border-color: var(--acc-2) }
-.conta-pill .cn { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px }
-.conta-pill .cv { font-size: 14px; font-weight: 600 }
+.conta-pill .cn { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.conta-pill .cv { font-size: 14px; font-weight: 600; white-space: nowrap }
 
 .fixas-lista { list-style: none; margin: 8px 0 0; padding: 0 }
 .fixas-lista li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px }
@@ -120,17 +128,27 @@ label.chk input { width: auto; flex: none }
 .cat .enche.sem { background: var(--warn) }
 .cat .det { grid-column: 1 / -1; font-size: 12px; color: var(--mut); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap }
 
-.hist { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: end; height: 150px; padding-top: 10px }
-.hcol { display: grid; grid-template-rows: 1fr auto auto; height: 100%; text-align: center; gap: 4px; min-width: 0; cursor: pointer }
-.hbars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 100% }
-.hbars i { display: block; width: 40%; max-width: 18px; border-radius: 3px 3px 0 0 }
-.hbars .e { background: var(--bar-2) } .hbars .s { background: var(--bar) }
-.hcol .m { font-size: 12px; color: var(--mut); text-transform: capitalize }
-.hcol .v { font-size: 11px; font-family: var(--f-ui); white-space: nowrap; font-variant-numeric: tabular-nums }
-.hcol.atual .m { color: var(--ink); font-weight: 700 }
-.hcol.atual .v { font-weight: 700 }
-.leg { display: flex; gap: 14px; font-size: 12px; color: var(--mut); margin-top: 8px }
-.leg i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px }
+.hist-wrap { display: grid; grid-template-columns: 24px minmax(0, 1fr) 24px; align-items: center; gap: 2px }
+.hist-nav-btn { background: none; border: 0; color: var(--mut); font-size: 22px; line-height: 1; width: 24px; height: 56px; border-radius: 8px; cursor: pointer; display: grid; place-items: center; padding: 0 }
+.hist-nav-btn:hover { background: var(--acc-soft); color: var(--ink) }
+.hist { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; align-items: end; height: 168px; padding-top: 6px }
+.hcol { display: grid; grid-template-rows: 1fr auto auto auto; height: 100%; text-align: center; gap: 1px; min-width: 0; cursor: pointer; padding: 2px 1px; border-radius: 8px }
+.hcol:hover { background: color-mix(in srgb, var(--acc-soft) 45%, transparent) }
+.hcol.atual { background: color-mix(in srgb, var(--acc-soft) 70%, transparent) }
+.hbars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 100%; padding-bottom: 4px }
+.hbars > i, .hbars > .s-stack { display: flex; flex-direction: column-reverse; width: 42%; max-width: 16px; border-radius: 3px 3px 0 0; overflow: hidden }
+.hbars > i.e { display: block; background: var(--bar-2) }
+.hbars .s-seg { display: block; width: 100%; border-top: 1px solid var(--panel) }
+.hbars .s-seg:last-child { border-top: 0 }
+.hcol .ve { font-size: 10px; color: var(--pos); line-height: 1.15; white-space: nowrap }
+.hcol .vs { font-size: 10px; color: var(--ink); line-height: 1.15; white-space: nowrap }
+.hcol .m { font-size: 11px; color: var(--mut); text-transform: capitalize; margin-top: 2px }
+.hcol.atual .m, .hcol.atual .vs { font-weight: 700; color: var(--ink) }
+.leg { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--mut); margin-top: 10px }
+.leg span { display: inline-flex; align-items: center; gap: 5px }
+.leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none }
+.hist-resumo { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--mut); display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between }
+.hist-resumo b { color: var(--ink); font-weight: 600 }
 
 .top5 { list-style: none; margin: 0; padding: 0 }
 .top5 li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); cursor: pointer; align-items: center }
@@ -221,8 +239,8 @@ dialog::backdrop { background: rgba(5, 15, 16, .45) }
 #dlgCorpo { display: grid; gap: 10px; margin: 12px 0 16px }
 .dlg-esq { margin-right: auto; color: var(--neg) }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 10; max-width: calc(100vw - 32px) }
-.cat:focus-visible, li[role=button]:focus-visible, .hcol:focus-visible, .conta-pill:focus-visible { outline: 2px solid var(--acc-2); outline-offset: 2px; border-radius: 6px }
-@media (prefers-reduced-motion: reduce) { .orc-fill { transition: none } }
+.cat:focus-visible, li[role=button]:focus-visible, .hcol:focus-visible, .conta-pill:focus-visible, .hist-nav-btn:focus-visible { outline: 2px solid var(--acc-2); outline-offset: 2px; border-radius: 6px }
+@media (prefers-reduced-motion: reduce) { .orc-fill, .num, .valor { transition: none } }
 
 @media (min-width: 900px) {
   body { padding-left: 208px }
@@ -235,5 +253,6 @@ dialog::backdrop { background: rgba(5, 15, 16, .45) }
   .kpi .num { font-size: 24px }
   .filtros { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center }
   .filtros input[type=search], .filtros .chk { grid-column: auto }
-  .hist { height: 190px }
+  .hist { height: 205px }
+  .hcol .ve, .hcol .vs { font-size: 11px }
 }

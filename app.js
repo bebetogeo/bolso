@@ -1,6 +1,6 @@
 'use strict';
 /* Bolso — controle financeiro pessoal. Tudo roda e fica guardado neste aparelho (IndexedDB). */
-const VERSAO = '1.1.1';
+const VERSAO = '1.1.2';
 
 // ───────────────────────── utilidades ─────────────────────────
 const $ = (s, r = document) => r.querySelector(s);
@@ -545,7 +545,7 @@ function render() {
   $('#mesNav').style.visibility = (S.view === 'painel' || S.view === 'lancamentos') && temDados() ? 'visible' : 'hidden';
   $('#mesLabel').textContent = mesLongo(S.mes).replace(' de ', ' ');
   $('#avisoExemplo').hidden = !S.meta.exemplo;
-  if ($('#fabNovo')) $('#fabNovo').hidden = !(S.view === 'painel' || S.view === 'lancamentos') || !temDados();
+  if ($('#btnNovoTop')) $('#btnNovoTop').hidden = !temDados();
   ({ painel: rPainel, lancamentos: rLanc, importar: () => {}, orcamento: rOrc, ajustes: rAjustes })[S.view]();
 }
 
@@ -671,7 +671,7 @@ function rLanc() {
   fc.value = vc; if (fc.selectedIndex < 0) fc.value = '';
   fa.innerHTML = '<option value="">Todas as contas</option>' + S.contas.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
   fa.value = va; if (fa.selectedIndex < 0) fa.value = '';
-  const l = filtrados(), busca = $('#busca').value.trim() !== '', modoTriagem = $('#fSem').checked && l.length > 0;
+  const l = filtrados(), busca = $('#busca').value.trim() !== '', modoTriagem = ($('#fSem').checked || $('#fCat').value === '__sem') && l.length > 0;
   if ($('#barTriagem')) $('#barTriagem').hidden = !modoTriagem;
   let ent = 0, sai = 0;
   for (const t of l) { const tp = tipoTx(t); if (tp === 'mov') continue; if (t.valor > 0) ent += t.valor; else sai -= t.valor; }
@@ -716,9 +716,9 @@ function rAjustes() {
   $('#cats-lista').innerHTML = S.cats.map(c => `<li data-catedit="${esc(c.id)}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${TIPO_NOME[c.tipo]}</small></span><span class="seta">›</span></li>`).join('');
   $('#bkInfo').textContent = S.meta.ultimoBackup ? `Última cópia salva em ${dataBRa(S.meta.ultimoBackup)}. O Bolso lembra você a cada 30 dias.` : 'Nenhuma cópia salva ainda. O Bolso lembra você a cada 30 dias.';
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent), instalado = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  $('#cardInstalar').hidden = instalado || !(promptInstalar || ios);
+  $('#cardInstalar').hidden = instalado || !!S.meta.ocultarInstalar || !(promptInstalar || ios);
   $('#btnInstalar').hidden = !promptInstalar;
-  if (ios && !promptInstalar) $('#instalarTxt').innerHTML = 'No iPhone: abra esta página no <b>Safari</b>, toque em <b>Compartilhar</b> (o quadrado com a seta) e escolha <b>Adicionar à Tela de Início</b>.';
+  if (ios && !promptInstalar) $('#instalarTxt').innerHTML = 'No iPhone: toque em <b>Compartilhar</b> (o ícone do quadrado com seta na barra do navegador) e escolha <b>Adicionar à Tela de Início</b>.';
 }
 
 // ───────────────────────── diálogos ─────────────────────────
@@ -907,9 +907,11 @@ function exportarCSV() {
   baixar(`bolso-lancamentos-${hoje()}.csv`, '\ufeffData;Descrição;Valor;Categoria;Conta;Observação\r\n' + l.join('\r\n'), 'text/csv;charset=utf-8');
 }
 async function apagarTudo(silencioso) {
-  const tema = S.meta.tema;
+  const tema = S.meta.tema, ocultarInst = S.meta.ocultarInstalar;
   await DB.limpar(); S.meta = {}; S.tx = []; S.contas = [];
-  await semear(); if (tema) await DB.meta('tema', tema);
+  await semear();
+  if (tema) await DB.meta('tema', tema);
+  if (ocultarInst) await DB.meta('ocultarInstalar', true);
   S.mes = mesAtual();
   if (!silencioso) { render(); toast('Tudo apagado'); }
 }
@@ -1021,7 +1023,7 @@ function ligar() {
   for (const id of ['busca', 'fCat', 'fConta', 'fSem']) $('#' + id).addEventListener(id === 'busca' ? 'input' : 'change', () => { S.limite = 200; rLanc(); });
   $('#lancMais').onclick = () => { S.limite += 300; rLanc(); };
   $('#btnNovo').onclick = () => editarTx(null);
-  if ($('#fabNovo')) $('#fabNovo').onclick = () => editarTx(null);
+  if ($('#btnNovoTop')) $('#btnNovoTop').onclick = () => editarTx(null);
 
   const drop = $('#drop'), entra = async fs => { if (fs.length) { await importarArquivos([...fs]); } };
   $('#arquivo').onchange = e => entra(e.target.files);
@@ -1040,6 +1042,7 @@ function ligar() {
 
   $('#tema').onchange = async e => { await DB.meta('tema', e.target.value); aplicarTema(); };
   $('#btnInstalar').onclick = async () => { if (!promptInstalar) return; promptInstalar.prompt(); await promptInstalar.userChoice; promptInstalar = null; rAjustes(); };
+  if ($('#btnOcultarInstalar')) $('#btnOcultarInstalar').onclick = async () => { await DB.meta('ocultarInstalar', true); rAjustes(); };
   $('#rAdd').onclick = async () => {
     const texto = norm($('#rTexto').value), cat = $('#rCat').value;
     if (texto.length < 2) return toast('Escreva o texto que aparece na descrição');

@@ -792,8 +792,8 @@ function rPainel() {
       kp.textContent = brl(prevSobra);
       kp.className = 'num ' + (prevSobra < 0 ? 'neg' : 'pos');
       $('#kPrevSub').innerHTML = pendFixas > 0
-        ? `após <span class="num">${brl0(pendFixas)}</span> em fixas`
-        : 'fixas do mês já pagas';
+        ? `menos <span class="num">${brl(pendFixas)}</span> pendentes`
+        : 'contas fixas já pagas';
     }
   }
 

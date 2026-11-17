@@ -99,6 +99,7 @@ label.chk input { width: auto; flex: none }
 @media (max-width: 600px) {
   .kpis { grid-template-columns: 1fr 1fr }
   .kpis:has(#kpiPrev[hidden]) .kpi:nth-child(3) { grid-column: 1 / -1 }
+  .kpi .lbl { font-size: 10.5px; letter-spacing: .03em }
   .kpi > .num { font-size: 18px }
 }
 

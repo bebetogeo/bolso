@@ -2,209 +2,265 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Bolso</title>
-  <meta name="description" content="Controle financeiro pessoal que funciona offline. Seus dados ficam só neste aparelho.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f5257">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Bolso">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bolso">
+  <title>Bolso</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/mask.svg" type="image/svg+xml">
   <script>try{var t=localStorage.getItem('bolso-tema');if(t==='claro'||t==='escuro')document.documentElement.dataset.theme=t==='claro'?'light':'dark'}catch(e){}</script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header class="top">
-  <div class="top-in">
-    <div class="brand"><span class="logo" aria-hidden="true"></span>Bolso</div>
-    <div class="top-dir">
-      <div class="mes-nav" id="mesNav">
-        <button class="ic" id="mesAnt" aria-label="Mês anterior">‹</button>
-        <span id="mesLabel">—</span>
-        <button class="ic" id="mesProx" aria-label="Próximo mês">›</button>
+  <header class="top">
+    <div class="top-in">
+      <span class="brand"><i class="logo"></i> Bolso</span>
+      <div class="top-dir">
+        <div class="mes-nav" id="mesNav">
+          <button type="button" class="ic" id="mesAnt" aria-label="Mês anterior">‹</button>
+          <span id="mesLabel"></span>
+          <button type="button" class="ic" id="mesProx" aria-label="Próximo mês">›</button>
+        </div>
+        <button type="button" class="ic" id="btnNovoTop" aria-label="Novo lançamento" title="Novo lançamento">+</button>
+        <button type="button" class="ic ic-sm" id="btnPriv" aria-label="Ocultar ou mostrar valores" title="Ocultar valores">👁</button>
       </div>
-      <button class="ic ic-sm" id="btnPriv" aria-label="Ocultar ou mostrar valores" title="Ocultar valores">👁</button>
     </div>
-  </div>
-</header>
+  </header>
 
-<main id="main">
-  <div class="aviso" id="avisoExemplo" hidden><span>Você está vendo <b>dados de exemplo</b>, inventados para mostrar como o app funciona.</span><button class="btn sm" id="sairExemplo">Sair do exemplo</button></div>
-
-  <!-- MÊS -->
-  <section class="view" id="v-painel" data-view="painel">
-    <div id="vazio" class="vazio" hidden>
-      <h1>Boas-vindas ao Bolso</h1>
-      <p>Comece importando o extrato da sua conta ou a fatura do cartão. Os bancos chamam esse arquivo de <b>OFX</b> (às vezes “Money” ou “Quicken”) e quase todos oferecem no internet banking.</p>
-      <div class="row"><button class="btn pri" data-go="importar">Importar meu primeiro extrato</button><button class="btn" id="btnExemplo">Ver com dados de exemplo</button></div>
-      <p class="mut" style="margin:14px 0 0">Tudo o que você importar fica guardado só neste aparelho. Nada é enviado para a internet.</p>
+  <main id="main">
+    <div class="aviso" id="avisoExemplo" hidden>
+      <span>Você está vendo <b>dados de exemplo</b>, inventados para mostrar como o app funciona.</span>
+      <button type="button" class="btn sm" id="sairExemplo">Sair do exemplo</button>
     </div>
-    <div id="painel" class="view">
-      <div class="aviso" id="avisoRevisar" hidden></div>
-      <div class="aviso" id="avisoBackup" hidden></div>
-      <div class="kpis">
-        <div class="kpi"><span class="lbl">Entrou</span><span class="num pos" id="kEntrou">—</span><span class="sub" id="kEntrouSub"></span></div>
-        <div class="kpi"><span class="lbl">Saiu</span><span class="num" id="kSaiu">—</span><span class="sub" id="kSaiuSub"></span></div>
-        <div class="kpi"><span class="lbl">Sobrou</span><span class="num" id="kSobra">—</span><span class="sub" id="kSobraSub"></span></div>
+
+    <section class="view" data-view="painel">
+      <div id="vazio" class="vazio" hidden>
+        <h1>Seu dinheiro, sem complicação</h1>
+        <p>Importe o extrato da sua conta ou fatura do cartão (OFX ou CSV). Tudo fica guardado só neste aparelho.</p>
+        <div class="row">
+          <button type="button" class="btn pri" data-go="importar">Importar extrato</button>
+          <button type="button" class="btn" id="btnExemplo">Ver com dados de exemplo</button>
+        </div>
       </div>
-      <div class="contas-strip" id="contasStrip" hidden></div>
-      <div class="card" id="cardFuturo" hidden></div>
-      <div class="card" id="cardOrc">
-        <div class="card-h"><h2>Orçamento do mês</h2><button class="lnk" data-go="orcamento">Ajustar</button></div>
-        <div class="orc-barra" id="orcBarra"><div class="orc-fill" id="orcFill"></div><div class="orc-hoje" id="orcHoje"></div></div>
-        <p class="orc-txt" id="orcTxt">—</p>
+
+      <div id="painel" class="painel-grid" hidden>
+        <div class="aviso" id="avisoRevisar" hidden></div>
+        <div class="aviso" id="avisoBackup" hidden></div>
+
+        <div class="kpis">
+          <div class="kpi"><span class="lbl">Entrou</span><span class="num pos" id="kEntrou"></span><span class="sub" id="kEntrouSub"></span></div>
+          <div class="kpi"><span class="lbl">Saiu</span><span class="num" id="kSaiu"></span><span class="sub" id="kSaiuSub"></span></div>
+          <div class="kpi"><span class="lbl">Sobrou</span><span class="num" id="kSobra"></span><span class="sub" id="kSobraSub"></span></div>
+        </div>
+
+        <div class="contas-strip" id="contasStrip" hidden></div>
+        <div class="card" id="cardFuturo" hidden></div>
+
+        <div class="card">
+          <div class="card-h"><h2>Orçamento do mês</h2><button type="button" class="lnk" data-go="orcamento">Ajustar</button></div>
+          <div class="orc-barra" id="orcBarra"><div class="orc-fill" id="orcFill"></div><div class="orc-hoje" id="orcHoje"></div></div>
+          <p class="orc-txt" id="orcTxt"></p>
+        </div>
+
+        <div class="card">
+          <h2>Para onde foi o dinheiro</h2>
+          <div id="cats"></div>
+        </div>
+
+        <div class="card">
+          <h2>Últimos 6 meses</h2>
+          <div class="hist" id="hist"></div>
+          <div class="leg"><span><i style="background:var(--bar-2)"></i>Entrou</span><span><i style="background:var(--bar)"></i>Saiu</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>Maiores gastos do mês</h2><button type="button" class="lnk" data-go="lancamentos">Ver todos</button></div>
+          <ul class="top5" id="top5"></ul>
+        </div>
       </div>
+    </section>
+
+    <section class="view" data-view="lancamentos" hidden>
+      <div class="filtros">
+        <input type="search" id="busca" placeholder="Buscar por nome ou valor" aria-label="Buscar lançamentos">
+        <select id="fCat" aria-label="Filtrar por categoria"></select>
+        <select id="fConta" aria-label="Filtrar por conta"></select>
+        <label class="chk"><input type="checkbox" id="fSem"> Sem categoria</label>
+      </div>
+
+      <div class="row between">
+        <span class="mut" id="lancResumo"></span>
+        <button type="button" class="btn sm" id="btnNovo">+ Lançamento manual</button>
+      </div>
+
+      <div class="aviso" id="barTriagem" hidden>
+        <span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento para classificar rápido.</span>
+        <label class="chk" style="margin:0"><input type="checkbox" id="triagemRegra" checked> Criar regra sempre</label>
+      </div>
+
+      <ul class="lanc" id="lanc"></ul>
+      <button type="button" class="btn" id="lancMais" hidden>Mostrar mais</button>
+    </section>
+
+    <section class="view" data-view="importar" hidden>
       <div class="card">
-        <div class="card-h"><h2>Para onde foi o dinheiro</h2></div>
-        <div id="cats"></div>
+        <h2>Importar extrato ou fatura</h2>
+        <p class="mut">Escolha um ou mais arquivos <b>OFX</b> ou <b>CSV</b> baixados do seu banco ou cartão. Lançamentos repetidos são ignorados sozinhos.</p>
+        <label class="drop" id="drop">
+          <span>Toque para escolher arquivos ou arraste para cá</span>
+          <input type="file" id="arquivo" multiple accept=".ofx,.csv,.txt,text/csv,application/x-ofx">
+        </label>
+        <div id="importRes"></div>
       </div>
+
+      <div class="card" id="csvMap" hidden>
+        <h2>Conferir colunas do CSV</h2>
+        <p class="mut" id="csvNome"></p>
+        <div class="grid3">
+          <label>Coluna da data<select id="mData"></select></label>
+          <label>Coluna da descrição<select id="mDesc"></select></label>
+          <label>Coluna do valor<select id="mValor"></select></label>
+        </div>
+        <div class="grid2">
+          <label>Saídas em coluna separada?<select id="mDeb"></select></label>
+          <label>Conta ou cartão<select id="mConta"></select></label>
+        </div>
+        <label id="mNomeL" style="margin-top:8px">Nome da conta ou cartão<input id="mNome" maxlength="40"></label>
+        <label class="chk"><input type="checkbox" id="mInv"> Inverter sinal (usar se os gastos estiverem sem sinal de menos)</label>
+        <div class="prev" id="csvPrev"></div>
+        <div class="row end">
+          <button type="button" class="btn" id="csvCancel">Cancelar</button>
+          <button type="button" class="btn pri" id="csvOk">Importar</button>
+        </div>
+      </div>
+
+      <details class="card ajuda">
+        <summary>Como baixar o extrato no banco?</summary>
+        <dl>
+          <dt>OFX (recomendado)</dt>
+          <dd>No internet banking ou app do banco, entre em <b>Extrato</b> ou <b>Fatura</b>, escolha o período e procure por <b>Exportar → OFX</b> (ou Money 2000). Ele já traz a conta e os sinais certos.</dd>
+          <dt>CSV (Nubank, Inter, C6, Itaú, BTG…)</dt>
+          <dd>Exporte o extrato ou fatura em <b>CSV</b>. O Bolso reconhece automaticamente os formatos dos principais bancos e permite conferir antes de salvar.</dd>
+        </dl>
+      </details>
+    </section>
+
+    <section class="view" data-view="orcamento" hidden>
       <div class="card">
-        <div class="card-h"><h2>Últimos 6 meses</h2></div>
-        <div id="hist" class="hist"></div>
-        <div class="leg"><span><i style="background:var(--bar-2)"></i>Entrou</span><span><i style="background:var(--bar)"></i>Saiu</span></div>
+        <div class="card-h">
+          <h2>Limite mensal por categoria</h2>
+          <button type="button" class="lnk" id="orcSugTudo">Preencher pela média</button>
+        </div>
+        <p class="mut">Deixe em branco as categorias sem limite. O Bolso compara seus gastos com o ritmo dos dias do mês.</p>
+        <div id="orcLista"></div>
+        <p class="tot">Total do orçamento: <b class="num" id="orcTotal"></b></p>
       </div>
+    </section>
+
+    <section class="view" data-view="ajustes" hidden>
+      <div class="card" id="cardInstalar" hidden>
+        <div class="card-h">
+          <h2>Instalar o Bolso</h2>
+          <button type="button" class="lnk" id="btnOcultarInstalar">Ocultar</button>
+        </div>
+        <p id="instalarTxt">Instale o Bolso na tela inicial para abrir em tela cheia e usar mesmo sem internet.</p>
+        <button type="button" class="btn pri" id="btnInstalar">Instalar aplicativo</button>
+      </div>
+
       <div class="card">
-        <div class="card-h"><h2>Maiores gastos do mês</h2><button class="lnk" data-go="lancamentos">Ver todos</button></div>
-        <ul class="top5" id="top5"></ul>
+        <h2>Aparência</h2>
+        <label>Tema
+          <select id="tema">
+            <option value="auto">Igual ao do aparelho</option>
+            <option value="claro">Claro</option>
+            <option value="escuro">Escuro</option>
+          </select>
+        </label>
       </div>
-    </div>
-  </section>
 
-  <!-- LANÇAMENTOS -->
-  <section class="view" id="v-lancamentos" data-view="lancamentos" hidden>
-    <div class="filtros">
-      <input type="search" id="busca" placeholder="Buscar por nome ou valor" aria-label="Buscar">
-      <select id="fCat" aria-label="Categoria"></select>
-      <select id="fConta" aria-label="Conta"></select>
-      <label class="chk"><input type="checkbox" id="fSem"> Só sem categoria</label>
-    </div>
-    <div class="row between"><span class="mut" id="lancResumo"></span><button class="btn sm" id="btnNovo">+ Lançamento manual</button></div>
-    <div class="aviso" id="barTriagem" hidden><span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento para classificar rápido.</span><label class="chk" style="margin:0"><input type="checkbox" id="triagemRegra" checked> Criar regra sempre</label></div>
-    <ul class="lanc" id="lanc"></ul>
-    <button class="btn" id="lancMais" hidden>Mostrar mais</button>
-  </section>
-
-  <!-- IMPORTAR -->
-  <section class="view" id="v-importar" data-view="importar" hidden>
-    <div class="card">
-      <h2>Importar extrato</h2>
-      <p>Escolha o arquivo OFX ou CSV que você baixou do banco. Pode importar o mesmo período mais de uma vez: o Bolso ignora o que já tem.</p>
-      <label class="drop" id="drop">
-        <input type="file" id="arquivo" accept=".ofx,.OFX,.qfx,.csv,.CSV,.txt" multiple>
-        <span><b>Escolher arquivo</b> ou arrastar aqui</span>
-      </label>
-      <div id="importRes"></div>
-    </div>
-    <div class="card" id="csvMap" hidden>
-      <h2>Ajustar colunas do CSV</h2>
-      <p class="mut" id="csvNome"></p>
-      <p class="mut">Diga qual coluna é a data, a descrição e o valor. Confira no quadro abaixo se ficou certo.</p>
-      <div class="grid3">
-        <label>Data<select id="mData"></select></label>
-        <label>Descrição<select id="mDesc"></select></label>
-        <label>Valor<select id="mValor"></select></label>
+      <div class="card">
+        <h2>Contas e cartões</h2>
+        <ul class="lista" id="contas"></ul>
+        <p class="mut" style="margin:0">Contas são criadas sozinhas quando você importa um extrato. Toque numa conta para renomear ou trocar o tipo.</p>
       </div>
-      <div class="grid3">
-        <label>Saídas em outra coluna? (opcional)<select id="mDeb"></select></label>
-        <label>Guardar em<select id="mConta"></select></label>
-        <label id="mNomeL">Nome da conta<input id="mNome" maxlength="40"></label>
+
+      <div class="card">
+        <h2>Regras automáticas</h2>
+        <p class="mut">Sempre que a descrição tiver o texto abaixo, a categoria é escolhida sozinha.</p>
+        <ul class="lista" id="regras"></ul>
+        <div class="row">
+          <input id="rTexto" placeholder="Texto (ex.: UBER, PADARIA)" maxlength="60">
+          <select id="rCat"></select>
+          <button type="button" class="btn" id="rAdd">Criar</button>
+        </div>
+        <details class="padrao">
+          <summary id="regrasPadraoT"></summary>
+          <ul class="lista" id="regrasPadrao"></ul>
+        </details>
       </div>
-      <label class="chk"><input type="checkbox" id="mInv"> Neste arquivo os gastos aparecem como valores positivos (comum em fatura de cartão)</label>
-      <div class="prev" id="csvPrev"></div>
-      <div class="row"><button class="btn pri" id="csvOk">Importar</button><button class="btn" id="csvCancel">Cancelar</button></div>
-    </div>
-    <details class="card ajuda">
-      <summary>Onde baixar o extrato (OFX ou CSV) no meu banco?</summary>
-      <p class="mut" style="margin-top:10px">Nos bancos tradicionais o OFX costuma aparecer no <b>internet banking pelo computador</b>. Nos bancos digitais, o CSV sai direto pelo app.</p>
-      <dl>
-        <dt>Nubank</dt><dd>No app: Conta › Pedir extrato › CSV (ou OFX). Cartão: Resumo de faturas › Escolha o mês › Exportar CSV.</dd>
-        <dt>Itaú</dt><dd>Site no computador: Conta corrente › Extrato › Salvar em outros formatos › OFX / Money. Cartão: Cartões › Fatura › Exportar.</dd>
-        <dt>Inter</dt><dd>App ou Internet Banking: Conta Digital › Extrato › Exportar › OFX ou CSV.</dd>
-        <dt>Bradesco</dt><dd>Site do banco: Saldos e extratos › Extrato › Salvar como arquivo › “Money (OFX)”.</dd>
-        <dt>Santander</dt><dd>Site do banco: Conta corrente › Extrato › Exportar › formato OFX.</dd>
-        <dt>Banco do Brasil</dt><dd>Site do banco: Conta corrente › Extrato › ícone de salvar › “Money 2000+ (ofx)”.</dd>
-        <dt>Caixa e Sicoob</dt><dd>Internet Banking: Conta › Extrato › Exportar / Gerar arquivo para gerenciadores financeiros › OFX.</dd>
-      </dl>
-    </details>
-  </section>
 
-  <!-- ORÇAMENTO -->
-  <section class="view" id="v-orcamento" data-view="orcamento" hidden>
-    <div class="card">
-      <h2>Orçamento mensal</h2>
-      <p>Quanto você quer gastar por mês em cada categoria. Deixe em branco o que não quiser acompanhar. A sugestão é a média do que você gastou nos últimos 3 meses.</p>
-      <div class="row" style="margin-bottom:6px"><button class="btn sm" id="orcSugTudo">Preencher os vazios com a sugestão</button></div>
-      <div id="orcLista"></div>
-      <p class="tot">Total: <b id="orcTotal" class="num">—</b></p>
-    </div>
-  </section>
+      <div class="card">
+        <h2>Categorias</h2>
+        <ul class="lista" id="cats-lista"></ul>
+        <div class="row">
+          <input id="cNome" placeholder="Nova categoria" maxlength="40">
+          <select id="cTipo">
+            <option value="gasto">Gasto</option>
+            <option value="receita">Entrada</option>
+            <option value="mov">Não conta</option>
+          </select>
+          <button type="button" class="btn" id="cAdd">Criar</button>
+        </div>
+      </div>
 
-  <!-- AJUSTES -->
-  <section class="view" id="v-ajustes" data-view="ajustes" hidden>
-    <div class="card" id="cardInstalar" hidden>
-      <h2>Instalar o Bolso</h2>
-      <p class="mut" id="instalarTxt">Instale para abrir como um aplicativo, direto da tela inicial, mesmo sem internet.</p>
-      <div class="row"><button class="btn pri" id="btnInstalar" hidden>Instalar neste aparelho</button></div>
-    </div>
-    <div class="card">
-      <h2>Aparência</h2>
-      <div class="row"><label style="flex:1 1 200px">Tema<select id="tema"><option value="auto">Igual ao do aparelho</option><option value="claro">Claro</option><option value="escuro">Escuro</option></select></label></div>
-    </div>
-    <div class="card">
-      <h2>Contas e cartões</h2>
-      <ul class="lista" id="contas"></ul>
-      <p class="mut">Contas são criadas sozinhas quando você importa um extrato. Toque numa conta para renomear ou trocar o tipo.</p>
-    </div>
-    <div class="card">
-      <h2>Regras de categoria</h2>
-      <p class="mut">Quando a descrição contém o texto, o lançamento vai para a categoria. As regras que você cria ao corrigir um lançamento aparecem aqui.</p>
-      <ul class="lista" id="regras"></ul>
-      <div class="row"><input id="rTexto" placeholder="Texto (ex.: PADARIA SOL)" maxlength="60"><select id="rCat"></select><button class="btn sm" id="rAdd">Adicionar</button></div>
-      <details class="padrao"><summary id="regrasPadraoT">Regras que já vêm no app</summary><ul class="lista" id="regrasPadrao"></ul></details>
-    </div>
-    <div class="card">
-      <h2>Categorias</h2>
-      <ul class="lista" id="cats-lista"></ul>
-      <div class="row"><input id="cNome" placeholder="Nova categoria" maxlength="40"><select id="cTipo"><option value="gasto">Gasto</option><option value="receita">Entrada</option><option value="mov">Não conta (movimentação)</option></select><button class="btn sm" id="cAdd">Criar</button></div>
-    </div>
-    <div class="card">
-      <h2>Cópia de segurança</h2>
-      <p>Seus dados ficam só neste aparelho. Se trocar de celular, limpar o navegador ou quiser usar em outro aparelho, use a cópia.</p>
-      <div class="row"><button class="btn pri" id="bkSalvar">Salvar cópia</button><label class="btn">Restaurar cópia<input type="file" id="bkRestaurar" accept=".json,application/json" hidden></label><button class="btn" id="csvExport">Exportar lançamentos (CSV)</button></div>
-      <p class="mut" id="bkInfo" style="margin:10px 0 0"></p>
-    </div>
-    <div class="card perigo">
-      <h2>Apagar tudo</h2>
-      <p class="mut">Remove todos os lançamentos, contas, regras e orçamento deste aparelho. Não dá para desfazer.</p>
-      <div class="row"><input id="apagarConf" placeholder="Digite APAGAR" autocomplete="off"><button class="btn" id="apagar">Apagar tudo</button></div>
-    </div>
-    <p class="mut ver">Bolso · versão <span id="ver"></span> · seus dados ficam só neste aparelho</p>
-  </section>
-</main>
+      <div class="card">
+        <h2>Cópia de segurança</h2>
+        <p class="mut">Seus dados ficam só neste aparelho. Se trocar de celular, limpar o navegador ou quiser usar em outro aparelho, use a cópia.</p>
+        <div class="row">
+          <button type="button" class="btn pri" id="bkSalvar">Salvar cópia</button>
+          <label class="btn" style="color:var(--ink)">Restaurar cópia<input type="file" id="bkRestaurar" accept=".json,application/json" hidden></label>
+          <button type="button" class="btn" id="csvExport">Exportar lançamentos (CSV)</button>
+        </div>
+        <p class="mut" id="bkInfo" style="margin:10px 0 0"></p>
+      </div>
 
-<button class="fab" id="fabNovo" aria-label="Novo lançamento manual" title="Novo lançamento manual">+</button>
+      <div class="card perigo">
+        <h2>Apagar tudo</h2>
+        <p class="mut">Remove todos os lançamentos, contas, regras e orçamento deste aparelho. Não dá para desfazer.</p>
+        <div class="row">
+          <input id="apagarConf" placeholder="Digite APAGAR" maxlength="20">
+          <button type="button" class="btn" id="apagar">Apagar tudo</button>
+        </div>
+      </div>
 
-<nav class="tabs" aria-label="Seções">
-  <button data-go="painel" class="on"><span class="ti ti-painel"></span>Mês</button>
-  <button data-go="lancamentos"><span class="ti ti-lanc"></span>Lançamentos</button>
-  <button data-go="importar"><span class="ti ti-imp"></span>Importar</button>
-  <button data-go="orcamento"><span class="ti ti-orc"></span>Orçamento</button>
-  <button data-go="ajustes"><span class="ti ti-aj"></span>Ajustes</button>
-</nav>
+      <p class="mut ver">Bolso · versão <span id="ver"></span> · seus dados ficam só neste aparelho</p>
+    </section>
+  </main>
 
-<dialog id="dlg">
-  <form method="dialog" id="dlgForm">
-    <h3 id="dlgTitulo">Lançamento</h3>
-    <p class="mut" id="dlgDesc"></p>
-    <div id="dlgCorpo"></div>
-    <div class="row end"><button type="button" class="btn dlg-esq" id="dlgExtra" hidden></button><button type="button" class="btn" id="dlgCancel">Cancelar</button><button class="btn pri" value="ok" id="dlgOk">Salvar</button></div>
-  </form>
-</dialog>
-<div class="toast" id="toast" role="status" hidden></div>
+  <nav class="tabs" aria-label="Navegação">
+    <button type="button" data-go="painel"><i class="ti ti-painel"></i>Mês</button>
+    <button type="button" data-go="lancamentos"><i class="ti ti-lanc"></i>Lançamentos</button>
+    <button type="button" data-go="importar"><i class="ti ti-imp"></i>Importar</button>
+    <button type="button" data-go="orcamento"><i class="ti ti-orc"></i>Orçamento</button>
+    <button type="button" data-go="ajustes"><i class="ti ti-aj"></i>Ajustes</button>
+  </nav>
 
-<script src="app.js" defer></script>
+  <dialog id="dlg">
+    <form method="dialog" id="dlgForm">
+      <h3 id="dlgTitulo"></h3>
+      <p class="mut" id="dlgDesc"></p>
+      <div id="dlgCorpo"></div>
+      <div class="row end">
+        <button type="button" class="btn dlg-esq" id="dlgExtra" hidden></button>
+        <button type="button" class="btn" id="dlgCancel">Cancelar</button>
+        <button type="submit" class="btn pri" id="dlgOk" value="ok">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="app.js"></script>
 </body>
 </html>

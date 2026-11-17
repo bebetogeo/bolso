@@ -1,6 +1,6 @@
 'use strict';
 /* Bolso — controle financeiro pessoal. Tudo roda e fica guardado neste aparelho (IndexedDB). */
-const VERSAO = '1.1.2';
+const VERSAO = '1.2.0';
 
 // ───────────────────────── utilidades ─────────────────────────
 const $ = (s, r = document) => r.querySelector(s);
@@ -122,6 +122,7 @@ function indexar() {
   S.contaMap = Object.fromEntries(S.contas.map(c => [c.id, c]));
   const tam = (a, b) => b.texto.length - a.texto.length;
   S.regrasOrd = [...S.regras.filter(r => !r.padrao).sort(tam), ...S.regras.filter(r => r.padrao).sort(tam)];
+  treinarModelo();
 }
 const temDados = () => S.tx.length > 0;
 
@@ -174,29 +175,172 @@ async function semear() {
   indexar();
 }
 
+// ───────────────────────── aprendizado de máquina (classificador) ─────────────────────────
+// Classificador leve (Naive Bayes Multinomial + similaridade de valor para recorrências/Pix).
+// Roda em memória sobre os lançamentos classificados do aparelho, dando peso maior às escolhas manuais.
+const PALAVRAS_VAZIAS = new Set('PIX ENVIADO RECEBIDO TRANSF TRANSFERENCIA TED DOC TEV COMPRA COMPRAS CARTAO DEBITO CREDITO PAGTO PAGAMENTO PGTO VISA ELECTRON ELO MASTER MASTERCARD MAESTRO DE DA DO DAS DOS COM NO NA EM PARA QR CODE DES REM VIA A O E BR SAO PAULO BELO HORIZONTE PARC PARCELA'.split(' '));
+const IA = { prontos: false, nManuais: 0, nTotal: 0, catPeso: {}, featCat: {}, featTot: {}, vocab: new Set(), exManuais: [] };
+
+function faixaValor(cent) {
+  const v = Math.abs(cent) / 100;
+  if (v < 20) return 'v:micro';
+  if (v < 60) return 'v:peq';
+  if (v < 180) return 'v:med';
+  if (v < 600) return 'v:alto';
+  if (v < 2000) return 'v:muito_alto';
+  return 'v:grande';
+}
+
+function extrairFeatures(desc, valor, conta, data) {
+  const bruto = norm(desc).split(' ').filter(w => w.length >= 2 && !/^\d+$/.test(w));
+  const sig = bruto.filter(w => !PALAVRAS_VAZIAS.has(w));
+  const feats = [];
+  for (const w of sig) feats.push(`w:${w}`);
+  for (let i = 0; i < sig.length - 1; i++) feats.push(`bi:${sig[i]}_${sig[i + 1]}`);
+  if (sig.length) feats.push(`ini:${sig[0]}`);
+  feats.push(faixaValor(valor));
+  feats.push(`ct:${conta?.tipo || 'conta'}`);
+  if (data && data.length >= 10) {
+    const dia = +data.slice(8, 10);
+    feats.push(dia <= 10 ? 'd:ini' : dia <= 20 ? 'd:meio' : 'd:fim');
+  }
+  return { feats, sig };
+}
+
+function treinarModelo() {
+  IA.catPeso = {}; IA.featCat = {}; IA.featTot = {}; IA.vocab = new Set(); IA.exManuais = [];
+  IA.nManuais = 0; IA.nTotal = 0;
+  const somar = (cat, feats, peso) => {
+    if (!S.catMap[cat]) return;
+    IA.catPeso[cat] = (IA.catPeso[cat] || 0) + peso;
+    if (!IA.featCat[cat]) IA.featCat[cat] = {};
+    for (const f of feats) {
+      IA.vocab.add(f);
+      IA.featCat[cat][f] = (IA.featCat[cat][f] || 0) + peso;
+      IA.featTot[cat] = (IA.featTot[cat] || 0) + peso;
+    }
+  };
+  // 1. Priors leves vindos das regras padrão (evita partida a frio)
+  for (const [cat, lista] of Object.entries(REGRAS_PADRAO)) {
+    if (!S.catMap[cat] || S.catMap[cat].tipo === 'mov') continue;
+    for (let t of lista.split('|')) {
+      t = t.replace(/^[+-]|=$/g, '');
+      const { feats } = extrairFeatures(t, -5000, null, '');
+      const soTexto = feats.filter(f => f.startsWith('w:') || f.startsWith('bi:'));
+      if (soTexto.length) somar(cat, soTexto, 0.35);
+    }
+  }
+  // 2. Histórico real do usuário (escolhas manuais têm peso 3x maior)
+  for (const t of S.tx) {
+    if (!t.cat || !S.catMap[t.cat]) continue;
+    const peso = t.catManual ? 3.0 : 1.0;
+    const { feats, sig } = extrairFeatures(t.desc, t.valor, S.contaMap[t.conta], t.data);
+    somar(t.cat, feats, peso);
+    IA.nTotal++;
+    if (t.catManual) {
+      IA.nManuais++;
+      if (sig.length) IA.exManuais.push({ cat: t.cat, sig: new Set(sig), valor: t.valor, conta: t.conta });
+    }
+  }
+  IA.prontos = true;
+}
+
+function preverCategoria(desc, valor, conta, data) {
+  if (!IA.prontos) treinarModelo();
+  const ehEntrada = valor > 0;
+  const candidatas = S.cats.filter(c => {
+    if (ehEntrada) return c.tipo === 'receita' || (c.tipo === 'mov' && (IA.catPeso[c.id] || 0) > 0);
+    return c.tipo === 'gasto' || (c.tipo === 'mov' && (IA.catPeso[c.id] || 0) > 0);
+  });
+  if (!candidatas.length) return { cat: null, conf: 0, top: [] };
+
+  const { feats, sig } = extrairFeatures(desc, valor, conta, data);
+  const V = Math.max(1, IA.vocab.size);
+  const pesoGlobal = Math.max(1, candidatas.reduce((n, c) => n + (IA.catPeso[c.id] || 0.2), 0));
+
+  // Bônus de vizinho mais próximo para recorrências/Pix com nome e valor semelhantes
+  const bonusVizinho = {};
+  if (sig.length) {
+    for (const ex of IA.exManuais) {
+      if ((ex.valor > 0) !== ehEntrada) continue;
+      let comuns = 0;
+      for (const w of sig) if (ex.sig.has(w)) comuns++;
+      if (!comuns) continue;
+      const ratio = comuns / Math.max(sig.length, ex.sig.size);
+      const difVal = Math.abs(Math.abs(ex.valor) - Math.abs(valor)) / Math.max(100, Math.abs(ex.valor));
+      if (ratio >= 0.5 && difVal <= 0.18) {
+        const boost = (ratio * 2.2) + (difVal <= 0.05 ? 1.1 : 0.4);
+        bonusVizinho[ex.cat] = Math.max(bonusVizinho[ex.cat] || 0, boost);
+      }
+    }
+  }
+
+  const scores = candidatas.map(c => {
+    const prior = Math.log(((IA.catPeso[c.id] || 0.15) + 0.2) / (pesoGlobal + 0.2 * candidatas.length));
+    const denom = (IA.featTot[c.id] || 0) + V;
+    const mapa = IA.featCat[c.id] || {};
+    let logLik = 0;
+    for (const f of feats) {
+      const cnt = mapa[f] || 0;
+      const pesoFeat = f.startsWith('bi:') ? 1.35 : f.startsWith('w:') ? 1.15 : 0.75;
+      logLik += pesoFeat * Math.log((cnt + 1) / denom);
+    }
+    return { cat: c.id, score: prior + logLik + (bonusVizinho[c.id] || 0) };
+  });
+
+  const maxS = Math.max(...scores.map(x => x.score));
+  const exps = scores.map(x => ({ cat: x.cat, e: Math.exp(Math.max(-25, x.score - maxS)) }));
+  const somaE = exps.reduce((n, x) => n + x.e, 0) || 1;
+  // Calibração conservadora enquanto há poucos exemplos manuais no aparelho
+  const fatorAmostra = Math.min(1, 0.55 + (IA.nManuais / 12) * 0.45);
+  const top = exps
+    .map(x => ({ cat: x.cat, conf: (x.e / somaE) * fatorAmostra }))
+    .sort((a, b) => b.conf - a.conf);
+
+  return { cat: top[0]?.cat || null, conf: top[0]?.conf || 0, top };
+}
+
 /** Devolve o id da categoria para um lançamento, ou null. */
-function categorizar(desc, valor, conta) {
+function categorizar(desc, valor, conta, data = '') {
   const n = norm(desc), pad = ` ${n} `;
   if (conta && conta.tipo === 'cartao' && valor > 0 && /\b(PAGAMENTO|PAGTO|PGTO|PAG)\b/.test(n)) return 'fatura';
+  // 1. Regras explícitas criadas pelo usuário têm prioridade absoluta
   for (const r of S.regrasOrd) {
+    if (r.padrao) continue;
     if (r.sinal && Math.sign(valor) !== r.sinal) continue;
     if (!S.catMap[r.cat]) continue;
     const ok = r.modo === 'w' ? pad.includes(` ${r.texto} `) : r.modo === 'p' ? pad.includes(` ${r.texto}`) : n.includes(r.texto);
     if (ok) return r.cat;
   }
+  // 2. Se o modelo pessoal já aprendeu um padrão muito forte (ex.: exceção de valor), aplica antes do padrão genérico
+  const ia = IA.nManuais >= 3 ? preverCategoria(desc, valor, conta, data) : null;
+  if (ia && ia.conf >= 0.85 && ia.cat) return ia.cat;
+  // 3. Regras padrão embutidas no app
+  for (const r of S.regrasOrd) {
+    if (!r.padrao) continue;
+    if (r.sinal && Math.sign(valor) !== r.sinal) continue;
+    if (!S.catMap[r.cat]) continue;
+    const ok = r.modo === 'w' ? pad.includes(` ${r.texto} `) : r.modo === 'p' ? pad.includes(` ${r.texto}`) : n.includes(r.texto);
+    if (ok) return r.cat;
+  }
+  // 4. Classificação automática pelo modelo quando a confiança é alta
+  if (ia && ia.conf >= 0.78 && ia.cat) return ia.cat;
   return null;
 }
 async function reaplicarRegras() {
+  treinarModelo();
   const mud = [];
   for (const t of S.tx) {
     if (t.catManual) continue;
-    const c = categorizar(t.desc, t.valor, S.contaMap[t.conta]);
+    const c = categorizar(t.desc, t.valor, S.contaMap[t.conta], t.data);
     if (c !== t.cat) { t.cat = c; mud.push(t); }
   }
-  if (mud.length) await DB.gravar('tx', mud);
+  if (mud.length) {
+    await DB.gravar('tx', mud);
+    treinarModelo();
+  }
   return mud.length;
 }
-const PALAVRAS_VAZIAS = new Set('PIX ENVIADO RECEBIDO TRANSF TRANSFERENCIA TED DOC TEV COMPRA COMPRAS CARTAO DEBITO CREDITO PAGTO PAGAMENTO PGTO VISA ELECTRON ELO MASTER MASTERCARD MAESTRO DE DA DO DAS DOS COM NO NA EM PARA QR CODE DES REM VIA A O E BR SAO PAULO BELO HORIZONTE PARC PARCELA'.split(' '));
 function sugerirTexto(desc) {
   const p = norm(desc).split(' '), vazia = w => !w || /^\d+$/.test(w) || PALAVRAS_VAZIAS.has(w);
   const i = p.findIndex(w => !vazia(w));
@@ -349,7 +493,7 @@ async function importarLote({ conta, itens }, opt = {}) {
     }
     novos.push({
       id: uid(), conta: c.id, data: it.data, desc: it.desc, valor: it.valor, fitid: it.fitid || '',
-      cat: catHerdada || categorizar(it.desc, it.valor, c), catManual: !!catHerdada, manual: !!opt.manual, nota: '',
+      cat: catHerdada || categorizar(it.desc, it.valor, c, it.data), catManual: !!catHerdada, manual: !!opt.manual, nota: '',
       ...(parc ? { parcela: { atual: parc.atual, total: parc.total } } : {}),
     });
   }
@@ -360,6 +504,7 @@ async function importarLote({ conta, itens }, opt = {}) {
   S.tx.push(...novos);
   const pares = opt.semPares ? 0 : detectarTransferencias(novos);
   await DB.gravar('tx', novos);
+  treinarModelo();
   const datas = itens.map(i => i.data).sort();
   const parcelados = novos.filter(t => t.parcela && t.parcela.atual < t.parcela.total && t.valor < 0);
   return {
@@ -393,7 +538,10 @@ async function projetarParcelas(listaTx) {
       S.tx.push(novo); criadas.push(novo);
     }
   }
-  if (criadas.length) await DB.gravar('tx', criadas);
+  if (criadas.length) {
+    await DB.gravar('tx', criadas);
+    treinarModelo();
+  }
   return criadas.length;
 }
 
@@ -665,6 +813,16 @@ function filtrados() {
     return true;
   }).sort((a, b) => b.data.localeCompare(a.data) || a.desc.localeCompare(b.desc));
 }
+function montarChipsTriagem(t, topGeral) {
+  const pred = preverCategoria(t.desc, t.valor, S.contaMap[t.conta], t.data);
+  const sugs = pred.top.filter(x => x.conf >= 0.14 && S.catMap[x.cat]).slice(0, 2);
+  const usados = new Set(sugs.map(x => x.cat));
+  const base = t.valor > 0 ? S.cats.filter(x => x.tipo === 'receita').slice(0, 4) : topGeral;
+  const extras = base.filter(c => !usados.has(c.id)).slice(0, Math.max(2, 6 - sugs.length));
+  const btnIA = sugs.map(x => `<button type="button" class="qchip qchip-ia" data-quicktx="${esc(t.id)}" data-quickcat="${esc(x.cat)}" title="Confiança estimada: ${Math.round(x.conf * 100)}%">✦ ${esc(S.catMap[x.cat].nome)}</button>`).join('');
+  const btnBase = extras.map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}">${esc(qc.nome)}</button>`).join('');
+  return `<div class="qcats">${btnIA}${btnBase}<button type="button" class="qchip qchip-out" data-tx="${esc(t.id)}">+ Outra…</button></div>`;
+}
 function rLanc() {
   const fc = $('#fCat'), fa = $('#fConta'), vc = fc.value, va = fa.value;
   fc.innerHTML = '<option value="">Todas as categorias</option><option value="__sem">Sem categoria</option>' + opcoesCat(vc);
@@ -680,7 +838,7 @@ function rLanc() {
   $('#lanc').innerHTML = l.slice(0, S.limite).map(t => {
     const c = S.catMap[t.cat];
     const parc = t.parcela || detectarParcela(t.desc);
-    const chips = modoTriagem ? `<div class="qcats">${(t.valor > 0 ? S.cats.filter(x => x.tipo === 'receita').slice(0, 4) : topCats).map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}">${esc(qc.nome)}</button>`).join('')}<button type="button" class="qchip qchip-out" data-tx="${esc(t.id)}">+ Outra…</button></div>` : '';
+    const chips = modoTriagem ? montarChipsTriagem(t, topCats) : '';
     return `<li class="${t.projecao ? 'proj' : ''}" data-tx="${t.id}" role="button" tabindex="0"><span class="dia"><b>${t.data.slice(8, 10)}</b>${mesCurto(t.data.slice(0, 7))}</span>
       <span class="desc">${esc(t.desc)}</span><span class="valor ${t.valor > 0 ? 'pos' : ''}${c?.tipo === 'mov' ? ' apag' : ''}">${t.valor > 0 ? '+ ' : ''}${brl(Math.abs(t.valor))}</span>
       <span class="meta"><span class="meta-esq"><span class="tag${c ? (c.tipo === 'mov' ? ' mov' : '') : ' sem'}">${esc(c ? c.nome : 'Sem categoria')}</span>${parc ? `<span class="parc-tag">${parc.atual}/${parc.total}</span>` : ''}${t.projecao ? '<span class="parc-tag">previsto</span>' : ''}</span><span class="ct">${esc(S.contaMap[t.conta]?.nome || '')}</span></span>${chips}</li>`;
@@ -709,7 +867,8 @@ function rAjustes() {
   $('#contas').innerHTML = S.contas.map(c => `<li data-conta="${c.id}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${tipoC[c.tipo] || ''} · ${plural(nTx(c.id), 'lançamento', 'lançamentos')}</small></span><span class="seta">›</span></li>`).join('') || '<li class="mut">Nenhuma conta ainda.</li>';
   const minhas = S.regras.filter(r => !r.padrao), pad = S.regras.filter(r => r.padrao).sort((a, b) => (S.catMap[a.cat]?.ordem ?? 99) - (S.catMap[b.cat]?.ordem ?? 99) || a.texto.localeCompare(b.texto));
   const li = r => `<li><span><b>${esc(r.texto)}</b> → ${esc(S.catMap[r.cat]?.nome || '?')}${r.sinal ? `<small>${r.sinal > 0 ? 'só entradas' : 'só saídas'}</small>` : ''}</span><button class="x" data-del-regra="${esc(r.id)}" aria-label="Excluir regra ${esc(r.texto)}">×</button></li>`;
-  $('#regras').innerHTML = minhas.map(li).join('') || '<li class="mut">Você ainda não criou regras. Elas aparecem aqui quando você corrige a categoria de um lançamento.</li>';
+  $('#regras').innerHTML = minhas.map(li).join('') || '<li class="mut">Você ainda não criou regras fixas. Elas aparecem aqui quando você salva uma regra.</li>';
+  if ($('#iaStatus')) $('#iaStatus').textContent = `Classificação inteligente ativa · ${plural(IA.nTotal, 'lançamento analisado', 'lançamentos analisados')} (${plural(IA.nManuais, 'escolha manual', 'escolhas manuais')}).`;
   $('#regrasPadraoT').textContent = `Ver as ${pad.length} regras que já vêm no app`;
   $('#regrasPadrao').innerHTML = pad.map(li).join('');
   $('#rCat').innerHTML = opcoesCat('mercado');
@@ -766,12 +925,17 @@ async function dividirTx(t) {
   };
   S.tx.push(novoT);
   await DB.gravar('tx', [t, novoT]);
+  treinarModelo();
   render(); toast('Lançamento dividido em duas partes');
 }
 async function editarTx(id) {
   const novo = !id, t = novo ? { data: S.mes === mesAtual() ? hoje() : S.mes + '-01', desc: '', valor: 0, cat: null, conta: (await contaDinheiro()).id, manual: true, nota: '' } : S.tx.find(x => x.id === id);
   if (!t) return;
   const parc = !novo ? (t.parcela || detectarParcela(t.desc)) : null;
+  const pred = !novo && !t.cat ? preverCategoria(t.desc, t.valor, S.contaMap[t.conta], t.data) : null;
+  const dicaIA = pred && pred.cat && pred.conf >= 0.25 && S.catMap[pred.cat]
+    ? `<p class="mut" style="margin:-4px 0 0">✦ Sugestão inteligente: <b>${esc(S.catMap[pred.cat].nome)}</b> (${Math.round(pred.conf * 100)}%) <button type="button" class="lnk" id="btnUsarIA" data-catia="${esc(pred.cat)}">aplicar</button></p>`
+    : '';
   const acoesExtras = !novo ? `<div class="row" style="margin-top:4px">
     <button type="button" class="btn sm" id="btnSplitTx">Dividir valor</button>
     ${parc && parc.atual < parc.total && t.valor < 0 ? `<button type="button" class="btn sm" id="btnProjTx">Projetar parcelas (${parc.atual + 1}/${parc.total} a ${parc.total}/${parc.total})</button>` : ''}
@@ -785,10 +949,11 @@ async function editarTx(id) {
       <label>Valor (R$)<input name="valor" required inputmode="decimal" placeholder="0,00" value="${t.valor ? fmtNum.format(Math.abs(t.valor) / 100) : ''}"></label></div>
       <div class="grid2"><label>Data<input type="date" name="data" required value="${t.data}"></label>
       <label>Conta<select name="conta"${!t.manual ? ' disabled' : ''}>${S.contas.map(c => `<option value="${c.id}"${c.id === t.conta ? ' selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label></div>
-      <label>Categoria<select name="cat">${opcoesCat(S.catMap[t.cat] ? t.cat : '', 'Sem categoria')}</select></label>
+      <label>Categoria<select name="cat">${opcoesCat(S.catMap[t.cat] ? t.cat : '', 'Sem categoria')}</select></label>${dicaIA}
       <label>Observação (opcional)<input name="nota" maxlength="120" value="${esc(t.nota || '')}"></label>${acoesExtras}`,
     aoAbrir: d => {
       if (novo) $('[name=desc]', d).focus(); else $('[name=cat]', d).focus();
+      $('#btnUsarIA', d)?.addEventListener('click', e => { $('[name=cat]', d).value = e.target.dataset.catia; e.target.parentElement.remove(); });
       $('#btnSplitTx', d)?.addEventListener('click', () => { d.close('cancel'); dividirTx(t); });
       $('#btnProjTx', d)?.addEventListener('click', async () => {
         d.close('cancel');
@@ -801,7 +966,7 @@ async function editarTx(id) {
   if (!r) return;
   if (r._acao === 'extra') {
     if (!await confirmar('Excluir este lançamento?', `${t.desc} · ${brl(t.valor)}. Se ele veio de um extrato, pode voltar se você importar o mesmo arquivo de novo.`, 'Excluir')) return;
-    S.tx = S.tx.filter(x => x.id !== t.id); await DB.apagar('tx', t.id); toast('Lançamento excluído'); return render();
+    S.tx = S.tx.filter(x => x.id !== t.id); await DB.apagar('tx', t.id); treinarModelo(); toast('Lançamento excluído'); return render();
   }
   const v = parseValor(r.valor, ',');
   if (!Number.isFinite(v) || v === 0) { toast('Não entendi o valor. Use algo como 45,90'); return; }
@@ -813,9 +978,11 @@ async function editarTx(id) {
   if (novo) { t.id = uid(); t.fitid = ''; t.catManual = true; S.tx.push(t); }
   else if (t.cat !== catAntes) t.catManual = true;
   await DB.gravar('tx', t);
+  const autoExtras = t.cat !== catAntes ? await reaplicarRegras() : 0;
   if (S.meta.exemplo === undefined && novo && !S.meta.primeiraImportacao) await DB.meta('primeiraImportacao', hoje());
   render();
-  if (!novo && t.cat && t.cat !== catAntes && !t.manual) await oferecerRegra(t); else toast(novo ? 'Lançamento adicionado' : 'Lançamento salvo');
+  if (!novo && t.cat && t.cat !== catAntes && !t.manual) await oferecerRegra(t);
+  else toast(novo ? 'Lançamento adicionado' : `Lançamento salvo${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
 }
 async function oferecerRegra(t) {
   const nomeCat = S.catMap[t.cat].nome;
@@ -842,6 +1009,7 @@ async function criarRegra(texto, cat, aplicar) {
     const mud = S.tx.filter(x => !x.catManual && x.cat !== cat && norm(x.desc).includes(texto));
     for (const x of mud) x.cat = cat;
     if (mud.length) await DB.gravar('tx', mud);
+    treinarModelo();
   }
 }
 async function editarConta(id) {
@@ -991,8 +1159,9 @@ function ligar() {
         const texto = sugerirTexto(t.desc);
         if (texto.length >= 2) await criarRegra(texto, t.cat, true);
       }
+      const autoExtras = await reaplicarRegras();
       render();
-      toast(`Classificado em ${S.catMap[t.cat]?.nome || 'categoria'}`);
+      toast(`Classificado em ${S.catMap[t.cat]?.nome || 'categoria'}${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
       return;
     }
     const el = e.target.closest('[data-go],[data-revisar],[data-projparc],[data-tx],[data-cat],[data-filtraconta],[data-mes],[data-conta],[data-catedit],[data-del-regra],[data-sug]');

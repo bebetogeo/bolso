@@ -1,4 +1,4 @@
-/* Layout: one column, max 760px, bottom tab bar on phones, top bar with month selector */
+/* Layout: coluna única responsiva (máx. 760px), barra inferior no celular, lateral no computador e topo fixo */
 :root {
   --bg: #f3f6f6; --panel: #ffffff; --ink: #142224; --mut: #5d6f71; --line: #dbe4e4;
   --acc: #0f5257; --acc-2: #1d7a80; --acc-soft: #e1eeee;
@@ -158,6 +158,7 @@ small { display: block; font-size: 12px; color: var(--mut); font-weight: 400 }
 .qcats { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px }
 .qchip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--ink) }
 .qchip:hover { border-color: var(--acc-2); background: var(--acc-soft) }
+.qchip.qchip-ia { background: var(--acc-soft); border-color: var(--acc-2); color: var(--ink) }
 .qchip.qchip-out { border-style: dashed; color: var(--acc-2) }
 
 .drop { position: relative; display: grid; place-items: center; border: 2px dashed var(--line); border-radius: 14px; padding: 28px 12px; text-align: center; color: var(--ink); cursor: pointer; font-size: 15px }

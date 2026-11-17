@@ -1,6 +1,6 @@
 'use strict';
 /* Bolso — controle financeiro pessoal. Tudo roda e fica guardado neste aparelho (IndexedDB). */
-const VERSAO = '1.4.1';
+const VERSAO = '1.4.2';
 
 // ───────────────────────── utilidades ─────────────────────────
 const $ = (s, r = document) => r.querySelector(s);
@@ -780,6 +780,23 @@ function rPainel() {
   $('#kSaiuSub').textContent = sub;
   $('#kSobraSub').textContent = sobra < 0 ? 'saiu mais do que entrou' : r.entrou > 0 ? `${Math.round(sobra / r.entrou * 100)}% do que entrou` : '';
 
+  const recs = S.mes === mesAtual() ? detectarRecorrencias(S.mes) : [];
+  const pendFixas = recs.filter(x => !x.pago).reduce((n, x) => n + x.valor, 0);
+  const kPrevBox = $('#kpiPrev');
+  if (kPrevBox) {
+    const mostrarPrev = S.mes === mesAtual();
+    kPrevBox.hidden = !mostrarPrev;
+    if (mostrarPrev) {
+      const prevSobra = sobra - pendFixas;
+      const kp = $('#kPrev');
+      kp.textContent = brl(prevSobra);
+      kp.className = 'num ' + (prevSobra < 0 ? 'neg' : 'pos');
+      $('#kPrevSub').innerHTML = pendFixas > 0
+        ? `após <span class="num">${brl0(pendFixas)}</span> em fixas`
+        : 'fixas do mês já pagas';
+    }
+  }
+
   // faixa de saldos (com suporte a saldo inicial de referência) e faturas por conta
   const strip = $('#contasStrip');
   if (strip) {
@@ -800,7 +817,6 @@ function rPainel() {
   // radar de contas fixas e assinaturas no mês atual
   const cFix = $('#cardFixas');
   if (cFix) {
-    const recs = S.mes === mesAtual() ? detectarRecorrencias(S.mes) : [];
     if (!recs.length) { cFix.hidden = true; }
     else {
       const pend = recs.filter(x => !x.pago);

@@ -96,6 +96,13 @@ label.chk input { width: auto; flex: none }
 .conta-pill .cn { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px }
 .conta-pill .cv { font-size: 14px; font-weight: 600 }
 
+.fixas-lista { list-style: none; margin: 8px 0 0; padding: 0 }
+.fixas-lista li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px }
+.fixas-lista li:first-child { border-top: 0 }
+.fixas-lista .fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.fixas-lista .fv { display: flex; align-items: center; gap: 6px; flex: none; font-weight: 600 }
+.tag-alta { display: inline-block; padding: 1px 6px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 11px; font-weight: 600; font-family: var(--f-ui) }
+
 .orc-barra { position: relative; height: 14px; background: var(--acc-soft); border-radius: 7px; overflow: visible; margin: 8px 0 }
 .orc-fill { height: 100%; border-radius: 7px; background: var(--bar); width: 0; transition: width .4s }
 .orc-fill.alto { background: var(--warn) } .orc-fill.estourou { background: var(--neg) }

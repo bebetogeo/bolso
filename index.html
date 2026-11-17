@@ -1,29 +1,32 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Bolso</title>
-<meta name="description" content="Controle financeiro pessoal que funciona offline. Seus dados ficam só neste aparelho.">
-<meta name="theme-color" content="#0f5257">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Bolso">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<script>try{var t=localStorage.getItem('bolso-tema');if(t==='claro'||t==='escuro')document.documentElement.dataset.theme=t==='claro'?'light':'dark'}catch(e){}</script>
-<link rel="stylesheet" href="app.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Bolso</title>
+  <meta name="description" content="Controle financeiro pessoal que funciona offline. Seus dados ficam só neste aparelho.">
+  <meta name="theme-color" content="#0f5257">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Bolso">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>try{var t=localStorage.getItem('bolso-tema');if(t==='claro'||t==='escuro')document.documentElement.dataset.theme=t==='claro'?'light':'dark'}catch(e){}</script>
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header class="top">
   <div class="top-in">
     <div class="brand"><span class="logo" aria-hidden="true"></span>Bolso</div>
-    <div class="mes-nav" id="mesNav">
-      <button class="ic" id="mesAnt" aria-label="Mês anterior">‹</button>
-      <span id="mesLabel">—</span>
-      <button class="ic" id="mesProx" aria-label="Próximo mês">›</button>
+    <div class="top-dir">
+      <div class="mes-nav" id="mesNav">
+        <button class="ic" id="mesAnt" aria-label="Mês anterior">‹</button>
+        <span id="mesLabel">—</span>
+        <button class="ic" id="mesProx" aria-label="Próximo mês">›</button>
+      </div>
+      <button class="ic ic-sm" id="btnPriv" aria-label="Ocultar ou mostrar valores" title="Ocultar valores">👁</button>
     </div>
   </div>
 </header>
@@ -34,7 +37,7 @@
   <!-- MÊS -->
   <section class="view" id="v-painel" data-view="painel">
     <div id="vazio" class="vazio" hidden>
-      <h1>Bem-vinda ao Bolso</h1>
+      <h1>Boas-vindas ao Bolso</h1>
       <p>Comece importando o extrato da sua conta ou a fatura do cartão. Os bancos chamam esse arquivo de <b>OFX</b> (às vezes “Money” ou “Quicken”) e quase todos oferecem no internet banking.</p>
       <div class="row"><button class="btn pri" data-go="importar">Importar meu primeiro extrato</button><button class="btn" id="btnExemplo">Ver com dados de exemplo</button></div>
       <p class="mut" style="margin:14px 0 0">Tudo o que você importar fica guardado só neste aparelho. Nada é enviado para a internet.</p>
@@ -47,6 +50,8 @@
         <div class="kpi"><span class="lbl">Saiu</span><span class="num" id="kSaiu">—</span><span class="sub" id="kSaiuSub"></span></div>
         <div class="kpi"><span class="lbl">Sobrou</span><span class="num" id="kSobra">—</span><span class="sub" id="kSobraSub"></span></div>
       </div>
+      <div class="contas-strip" id="contasStrip" hidden></div>
+      <div class="card" id="cardFuturo" hidden></div>
       <div class="card" id="cardOrc">
         <div class="card-h"><h2>Orçamento do mês</h2><button class="lnk" data-go="orcamento">Ajustar</button></div>
         <div class="orc-barra" id="orcBarra"><div class="orc-fill" id="orcFill"></div><div class="orc-hoje" id="orcHoje"></div></div>
@@ -77,6 +82,7 @@
       <label class="chk"><input type="checkbox" id="fSem"> Só sem categoria</label>
     </div>
     <div class="row between"><span class="mut" id="lancResumo"></span><button class="btn sm" id="btnNovo">+ Lançamento manual</button></div>
+    <div class="aviso" id="barTriagem" hidden><span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento para classificar rápido.</span><label class="chk" style="margin:0"><input type="checkbox" id="triagemRegra" checked> Criar regra sempre</label></div>
     <ul class="lanc" id="lanc"></ul>
     <button class="btn" id="lancMais" hidden>Mostrar mais</button>
   </section>
@@ -85,7 +91,7 @@
   <section class="view" id="v-importar" data-view="importar" hidden>
     <div class="card">
       <h2>Importar extrato</h2>
-      <p>Escolha o arquivo OFX (ou CSV) que você baixou do banco. Pode importar o mesmo período mais de uma vez: o Bolso ignora o que já tem.</p>
+      <p>Escolha o arquivo OFX ou CSV que você baixou do banco. Pode importar o mesmo período mais de uma vez: o Bolso ignora o que já tem.</p>
       <label class="drop" id="drop">
         <input type="file" id="arquivo" accept=".ofx,.OFX,.qfx,.csv,.CSV,.txt" multiple>
         <span><b>Escolher arquivo</b> ou arrastar aqui</span>
@@ -111,16 +117,17 @@
       <div class="row"><button class="btn pri" id="csvOk">Importar</button><button class="btn" id="csvCancel">Cancelar</button></div>
     </div>
     <details class="card ajuda">
-      <summary>Onde baixar o OFX no meu banco?</summary>
-      <p class="mut" style="margin-top:10px">Em geral o OFX só aparece no <b>internet banking pelo computador</b> (site do banco), não no aplicativo do celular.</p>
+      <summary>Onde baixar o extrato (OFX ou CSV) no meu banco?</summary>
+      <p class="mut" style="margin-top:10px">Nos bancos tradicionais o OFX costuma aparecer no <b>internet banking pelo computador</b>. Nos bancos digitais, o CSV sai direto pelo app.</p>
       <dl>
-        <dt>Bradesco</dt><dd>Site do banco: Saldos e extratos › Extrato (mensal ou por período) › Salvar como arquivo › “Money (OFX)”. Cartão: Cartões › Extratos › Fatura › Salvar como arquivo.</dd>
-        <dt>Santander</dt><dd>Site do banco: Conta corrente › Extrato › Exportar › formato OFX. Cartão: Cartões › Faturas › Exportar.</dd>
-        <dt>Banco do Brasil</dt><dd>Site do banco: Conta corrente › Extrato › ícone de salvar › “Money 2000+ (ofx)”. Cartão: Cartões › Fatura › salvar em OFX.</dd>
-        <dt>Caixa</dt><dd>Internet Banking Caixa: Conta › Extrato › escolha o período › Gerar arquivo para gerenciadores financeiros › OFX.</dd>
-        <dt>Sicoob</dt><dd>Sicoobnet no computador: Conta corrente › Extrato › Exportar › OFX. No app: Extrato › compartilhar/exportar › OFX.</dd>
+        <dt>Nubank</dt><dd>No app: Conta › Pedir extrato › CSV (ou OFX). Cartão: Resumo de faturas › Escolha o mês › Exportar CSV.</dd>
+        <dt>Itaú</dt><dd>Site no computador: Conta corrente › Extrato › Salvar em outros formatos › OFX / Money. Cartão: Cartões › Fatura › Exportar.</dd>
+        <dt>Inter</dt><dd>App ou Internet Banking: Conta Digital › Extrato › Exportar › OFX ou CSV.</dd>
+        <dt>Bradesco</dt><dd>Site do banco: Saldos e extratos › Extrato › Salvar como arquivo › “Money (OFX)”.</dd>
+        <dt>Santander</dt><dd>Site do banco: Conta corrente › Extrato › Exportar › formato OFX.</dd>
+        <dt>Banco do Brasil</dt><dd>Site do banco: Conta corrente › Extrato › ícone de salvar › “Money 2000+ (ofx)”.</dd>
+        <dt>Caixa e Sicoob</dt><dd>Internet Banking: Conta › Extrato › Exportar / Gerar arquivo para gerenciadores financeiros › OFX.</dd>
       </dl>
-      <p class="mut">Os menus mudam de vez em quando. Se não achar o OFX, procure por “exportar”, “salvar” ou “Money”. Um CSV ou planilha exportada também serve.</p>
     </details>
   </section>
 
@@ -177,6 +184,8 @@
     <p class="mut ver">Bolso · versão <span id="ver"></span> · seus dados ficam só neste aparelho</p>
   </section>
 </main>
+
+<button class="fab" id="fabNovo" aria-label="Novo lançamento manual" title="Novo lançamento manual">+</button>
 
 <nav class="tabs" aria-label="Seções">
   <button data-go="painel" class="on"><span class="ti ti-painel"></span>Mês</button>

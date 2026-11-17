@@ -96,7 +96,7 @@
       </div>
 
       <div class="aviso" id="barTriagem" hidden>
-        <span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento para classificar rápido.</span>
+        <span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento (✦ = sugestão inteligente).</span>
         <label class="chk" style="margin:0"><input type="checkbox" id="triagemRegra" checked> Criar regra sempre</label>
       </div>
 
@@ -187,14 +187,15 @@
       </div>
 
       <div class="card">
-        <h2>Regras automáticas</h2>
-        <p class="mut">Sempre que a descrição tiver o texto abaixo, a categoria é escolhida sozinha.</p>
+        <h2>Regras e aprendizado</h2>
+        <p class="mut">Além das regras fixas abaixo, o Bolso aprende automaticamente com as categorias que você escolhe.</p>
         <ul class="lista" id="regras"></ul>
         <div class="row">
           <input id="rTexto" placeholder="Texto (ex.: UBER, PADARIA)" maxlength="60">
           <select id="rCat"></select>
           <button type="button" class="btn" id="rAdd">Criar</button>
         </div>
+        <p class="mut" id="iaStatus" style="margin:10px 0 0"></p>
         <details class="padrao">
           <summary id="regrasPadraoT"></summary>
           <ul class="lista" id="regrasPadrao"></ul>

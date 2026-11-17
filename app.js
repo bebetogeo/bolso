@@ -1355,10 +1355,6 @@ function ligar() {
       if (!t) return;
       t.cat = qChip.dataset.quickcat; t.catManual = true;
       await DB.gravar('tx', t);
-      if ($('#triagemRegra')?.checked && !t.manual) {
-        const texto = sugerirTexto(t.desc);
-        if (texto.length >= 2) await criarRegra(texto, t.cat, true);
-      }
       const autoExtras = await reaplicarRegras();
       render();
       toast(`Classificado em ${S.catMap[t.cat]?.nome || 'categoria'}${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);

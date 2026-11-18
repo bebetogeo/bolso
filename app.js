@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.10.1';
+  const VERSAO = '1.11.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1483,8 +1483,9 @@
           tx.subId = btn.dataset.qsub || '';
           tx.catOrigem = 'usuario';
           await dbPutLanc(tx);
+          const outros = await criarRegraEAplicar(sugerirTextoRegra(tx.desc), tx.catId, tx.subId, tx);
           treinarIA();
-          toast(`Classificado em ${labelCat(tx.catId, tx.subId)}`);
+          toast(`Classificado em ${labelCat(tx.catId, tx.subId)}${outros ? ` · e mais ${outros} parecido${outros === 1 ? '' : 's'}` : ''}`);
           render();
         };
       });
@@ -2144,6 +2145,33 @@
     if (onOpen) onOpen();
   }
 
+  /** Texto sugerido para a regra: as duas primeiras palavras que dizem algo ("ASSOCIACAO VEREDAS"). */
+  function sugerirTextoRegra(desc) {
+    const tokens = tokenizar(desc);
+    return tokens.length ? tokens.slice(0, 2).join(' ') : norm(desc).slice(0, 24);
+  }
+
+  /** Lançamentos já no app que a regra pegaria (mesmo sentido; nunca os que ela classificou à mão). */
+  function parecidosComRegra(texto, tx) {
+    if (!norm(texto)) return [];
+    const sinal = tx ? Math.sign(tx.valor) : -1;
+    return state.lancamentos.filter(x => x !== tx && x.catOrigem !== 'usuario' &&
+      Math.sign(x.valor) === sinal && casaRegra(textoBusca(x.desc), texto, false));
+  }
+
+  /** Cria (ou troca) a regra e aplica a todos os lançamentos parecidos que ela não classificou à mão. */
+  async function criarRegraEAplicar(texto, catId, subId, tx) {
+    const chave = norm(texto);
+    if (!chave || !getCat(catId)) return 0;
+    state.regras = state.regras.filter(r => norm(r.texto) !== chave);
+    state.regras.unshift({ texto: chave, catId, subId });
+    await kvSet('regras', state.regras);
+    const lista = parecidosComRegra(chave, tx);
+    for (const x of lista) Object.assign(x, { catId, subId, catOrigem: 'regra' });
+    await dbPutLanc(lista);
+    return lista.length;
+  }
+
   function abrirModalLancamento(tx = null) {
     const novo = !tx;
     // Lançamento que veio do extrato: data, valor, conta e sentido (entrou/saiu) são os do banco.
@@ -2205,7 +2233,11 @@
         <label id="dlRatWrap">Valor a receber de rateio (opcional)
           <input type="number" id="dlRat" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${tx && tx.rateioEsperado ? Number(tx.rateioEsperado).toFixed(2) : ''}">
         </label>
-        <label class="chk"><input type="checkbox" id="dlRegra"> Criar regra automática para lançamentos parecidos</label>
+        <div class="sub-box" id="dlRegraBox" hidden>
+          <label>Regra: daqui para frente, descrição com o texto<input id="dlRegraTxt" maxlength="60" placeholder="apague para não criar regra"></label>
+          <p id="dlRegraN" style="margin:0"></p>
+          <p class="mut" id="dlRegraEx" style="margin:0"></p>
+        </div>
       `,
       onOpen: () => {
         const dlTipo = $('#dlTipo');
@@ -2238,6 +2270,28 @@
         dlTipo.onchange = syncCats;
         dlCat.onchange = syncSubs;
         syncCats();
+
+        // Regra: texto sugerido (editável) e quantos lançamentos que já estão no app ela também pegaria.
+        const txt = $('#dlRegraTxt');
+        txt.value = sugerirTextoRegra($('#dlDesc').value);
+        const catIni = tx ? tx.catId : '';
+        const subIni = tx ? (tx.subId || '') : '';
+        const atualizar = () => {
+          // Só ao trocar a categoria de um lançamento que já existia (o manual é dela, não vira regra).
+          $('#dlRegraBox').hidden = novo || (dlCat.value === catIni && (dlSub.value || '') === subIni);
+          const lista = parecidosComRegra(txt.value, tx);
+          $('#dlRegraN').textContent = lista.length
+            ? `Vale também para ${lista.length} ${lista.length === 1 ? 'lançamento que já está' : 'lançamentos que já estão'} no app.`
+            : 'Nenhum outro lançamento no app tem esse texto; vale para os próximos.';
+          $('#dlRegraEx').textContent = lista.length
+            ? `Ex.: ${lista.slice(0, 3).map(x => `${x.data.slice(8, 10)}/${x.data.slice(5, 7)} ${x.desc} (${moed(Math.abs(x.valor))})`).join('; ')}${lista.length > 3 ? '…' : ''}. Os que você classificou à mão não mudam.`
+            : '';
+        };
+        dlTipo.onchange = () => { syncCats(); atualizar(); };
+        dlCat.onchange = () => { syncSubs(); atualizar(); };
+        dlSub.onchange = atualizar;
+        txt.oninput = atualizar;
+        atualizar();
       },
       onOk: async () => {
         const data = $('#dlData').value;
@@ -2305,17 +2359,12 @@
           if (mudouConta) await kvSet('contas', state.contas);
         }
 
-        if ($('#dlRegra').checked) {
-          const tokens = tokenizar(desc);
-          const chave = tokens.length ? tokens.slice(0, 2).join(' ') : norm(desc).slice(0, 24);
-          if (chave && !state.regras.some(r => norm(r.texto) === chave)) {
-            state.regras.push({ texto: chave, catId, subId });
-            await kvSet('regras', state.regras);
-          }
-        }
+        const aplicados = $('#dlRegraBox').hidden ? 0
+          : await criarRegraEAplicar($('#dlRegraTxt').value, catId, subId, tx);
 
         treinarIA();
-        toast(novo ? 'Lançamento salvo' : 'Alterações salvas');
+        toast(aplicados ? `Salvo · e mais ${aplicados} ${aplicados === 1 ? 'lançamento parecido' : 'lançamentos parecidos'}`
+          : novo ? 'Lançamento salvo' : 'Alterações salvas');
         render();
       }
     });
@@ -2861,12 +2910,20 @@
       const texto = $('#rTexto').value.trim();
       const catId = $('#rCat').value;
       const subId = $('#rSub').hidden ? '' : ($('#rSub').value || '');
-      if (!texto || !catId) return;
-      state.regras.push({ texto, catId, subId });
+      const cat = getCat(catId);
+      if (!norm(texto) || !cat) return;
+      state.regras = state.regras.filter(r => norm(r.texto) !== norm(texto));
+      state.regras.unshift({ texto: norm(texto), catId, subId });
       await kvSet('regras', state.regras);
+      // Vale também para o que já está no app (menos o que ela classificou à mão).
+      const lista = state.lancamentos.filter(x => x.catOrigem !== 'usuario' && tipoCombina(cat, x.valor) &&
+        casaRegra(textoBusca(x.desc), texto, false));
+      for (const x of lista) Object.assign(x, { catId, subId, catOrigem: 'regra' });
+      await dbPutLanc(lista);
+      treinarIA();
       $('#rTexto').value = '';
       renderAjustes();
-      toast('Regra criada');
+      toast(lista.length ? `Regra criada · ${lista.length} ${lista.length === 1 ? 'lançamento atualizado' : 'lançamentos atualizados'}` : 'Regra criada');
     };
 
     $('#cAdd').onclick = async () => {

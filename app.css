@@ -1519,7 +1519,7 @@ dialog#dlg::backdrop {
 .saldo-data { font-size: 0.8rem; margin-top: -2px; }
 .saldo-frase { font-size: 0.95rem; line-height: 1.45; margin: 4px 0 2px; }
 .saldo-det { font-size: 0.8rem; line-height: 1.45; }
-.hbars .s-stack { width: 60%; max-width: 34px; }
+.hbars .e, .hbars .s-stack { width: 14px; }
 .s-seg { flex-shrink: 0; }
 
 /* Boxes por conta e cartão, logo abaixo do saldo total */
@@ -1535,3 +1535,12 @@ details.conta-tab > summary::-webkit-details-marker { display: none; }
 details.conta-tab > summary span::after { content: ' ▸'; color: var(--mut); }
 details.conta-tab[open] > summary span::after { content: ' ▾'; }
 .contas-strip { gap: 10px; }
+
+/* Filtro Todos / Entradas / Saídas */
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--card-alt); border: 1px solid var(--borda); border-radius: 12px; }
+.seg button { appearance: none; border: 0; background: transparent; color: var(--mut); font: inherit; font-size: 0.9rem; font-weight: 600; padding: 8px 6px; border-radius: 9px; cursor: pointer; }
+.seg button.on { background: var(--card); color: var(--fg); box-shadow: var(--sombra); }
+.seg button:focus-visible { outline: 2px solid var(--pri); outline-offset: 1px; }
+.cb-ultima { border-top: 1px solid var(--borda); padding-top: 5px; margin-top: 3px; }
+:root { --entrou: #a9dcbd; }
+.hbars .e { background: var(--entrou); }

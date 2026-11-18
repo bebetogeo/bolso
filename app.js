@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.11.0';
+  const VERSAO = '1.12.3';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -836,7 +836,8 @@
   /* ========================================================================
      Renderização: Painel do Mês
      ======================================================================== */
-  function irParaLancamentos({ cat = '', conta = '', sem = false } = {}) {
+  function irParaLancamentos({ cat = '', conta = '', sem = false, tipo = '' } = {}) {
+    state.fTipo = tipo;
     $('#fCat').value = cat;
     $('#fConta').value = conta;
     $('#fSem').checked = sem;
@@ -1002,33 +1003,46 @@
   }
 
   /**
-   * Fatura do cartão a mostrar no mês aberto. Com faturas importadas por arquivo (o nome traz o vencimento),
-   * usa a última que vence até o fim do mês; senão, o ciclo pelo dia de fechamento.
+   * Fatura do cartão, olhando a partir do mês aberto:
+   * - aberta: o que ainda vai ser pago. Se a última fatura importada não foi paga, é ela; se já foi,
+   *   são as compras feitas depois dela (a próxima fatura, que pode estar incompleta até ser importada).
+   * - ultima: a última fatura importada e quando foi paga.
+   * Sem faturas importadas por arquivo (nome com o vencimento), usa o ciclo pelo dia de fechamento.
    */
   function faturaDoCartao(c, ym) {
     const doCartao = state.lancamentos.filter(tx => tx.contaId === c.id && !ehMov(tx));
     const total = lista => round2(lista.reduce((acc, tx) => acc - tx.valor, 0));
-    const vencs = [...new Set(doCartao.map(tx => tx.fatura).filter(Boolean))].filter(v => v <= fimDoMes(ym)).sort();
+    const nomeMes = v => labelMes(v.slice(0, 7)).split(' ')[0].toLowerCase();
+    const vencs = [...new Set(doCartao.map(tx => tx.fatura).filter(Boolean))].filter(v => v <= fimDoMes(addMes(ym, 1))).sort();
+
     if (vencs.length) {
       const venc = vencs.pop();
       const itens = doCartao.filter(tx => tx.fatura === venc);
-      const ultimaCompra = itens.map(tx => tx.data).sort().pop() || venc;
-      const depois = doCartao.filter(tx => !tx.fatura && tx.data > ultimaCompra && tx.data <= ateNoMes(ym));
       const valor = total(itens);
       const dia = d => Date.parse(`${d}T12:00:00Z`) / 86400000;
       const perto = tx => dia(tx.data) - dia(venc) <= 10 && dia(venc) - dia(tx.data) <= 25;
-      const pgto = state.lancamentos.find(tx => perto(tx) && (
+      const pgto = state.lancamentos.find(tx => perto(tx) && tx.data <= ateNoMes(ym) && (
         (ehPagamentoFatura(tx) && Math.abs(tx.valor + valor) <= 0.05) ||
         (tx.contaId === c.id && tx.valor > 0 && ehMov(tx) && Math.abs(tx.valor - valor) <= 0.05)));
-      return { titulo: `Fatura que vence ${dataBR(venc)}`, valor, pgto, depois: depois.length ? total(depois) : 0, nDepois: depois.length };
+      const ultima = { venc, valor, pgto, titulo: `fatura de ${nomeMes(venc)}` };
+      if (!pgto) return { aberta: { valor, venc, completa: true, titulo: `Fatura de ${nomeMes(venc)} · vence ${dataBR(venc)}` }, ultima: null };
+
+      const ultimaCompra = itens.map(tx => tx.data).sort().pop() || venc;
+      const depois = doCartao.filter(tx => !tx.fatura && tx.data > ultimaCompra && tx.data <= ateNoMes(ym));
+      const proxVenc = `${addMes(venc.slice(0, 7), 1)}-${venc.slice(8, 10)}`;
+      return {
+        aberta: { valor: total(depois), venc: proxVenc, completa: false, n: depois.length, desde: ultimaCompra,
+          titulo: `Fatura de ${nomeMes(proxVenc)} · vence ${dataBR(proxVenc)}` },
+        ultima
+      };
     }
-    const dia = Math.min(Number(c.fechaDia) || 20, 28);
-    const fecha = m => `${m}-${String(dia).padStart(2, '0')}`;
-    const de = fecha(addMes(ym, -1));
-    const ate = fecha(ym);
+
+    const diaF = Math.min(Number(c.fechaDia) || 20, 28);
+    const fecha = m => `${m}-${String(diaF).padStart(2, '0')}`;
+    const ate = ym === mesAtualStr() && hojeStr() > fecha(ym) ? fecha(addMes(ym, 1)) : fecha(ym);
+    const de = fecha(addMes(ate.slice(0, 7), -1));
     const itens = doCartao.filter(tx => tx.data > de && tx.data <= ate);
-    const aberta = ym === mesAtualStr() && hojeStr() <= ate;
-    return { titulo: aberta ? `Fatura atual · fecha ${dataBR(ate)}` : `Fatura que fechou em ${dataBR(ate)}`, valor: total(itens), pgto: null, depois: 0, nDepois: 0, semArquivo: true };
+    return { aberta: { valor: total(itens), venc: '', completa: false, ciclo: true, titulo: `Fatura que fecha ${dataBR(ate)}` }, ultima: null };
   }
 
   /** Um box por conta (saldo e movimento do mês) e por cartão (fatura); tocar no box da conta abre o mês a mês dela. */
@@ -1041,15 +1055,24 @@
 
     const boxes = state.contas.map(c => {
       if (c.tipo === 'cartao') {
-        const f = faturaDoCartao(c, ym);
-        const situacao = f.pgto ? `<span class="badge-ok">✓ paga em ${dataBR(f.pgto.data)}</span>`
-          : f.semArquivo ? '' : '<span class="badge-warn">em aberto</span>';
+        const { aberta, ultima } = faturaDoCartao(c, ym);
+        const contaPg = ultima && ultima.pgto.contaId !== c.id ? getConta(ultima.pgto.contaId) : null;
+        let estado = '';
+        if (aberta.completa) {
+          estado = hojeStr() <= aberta.venc ? `<span class="badge-warn">a pagar até ${dataBR(aberta.venc)}</span>`
+            : '<span class="badge-warn">pagamento não encontrado nos extratos</span>';
+        } else if (!aberta.ciclo) {
+          estado = aberta.n
+            ? `${aberta.n} ${aberta.n === 1 ? 'compra' : 'compras'} depois de ${dataBR(aberta.desde)} · pode faltar o que ainda não foi importado`
+            : `Nenhuma compra importada depois de ${dataBR(aberta.desde)}. Importe a fatura atual do cartão para ver o valor.`;
+        }
         return `
           <button type="button" class="conta-box" data-conta="${esc(c.id)}">
             <span class="cb-nome" title="${esc(c.nome)}">💳 ${esc(nomeCurto(c))}</span>
-            <span class="cb-valor num">${moed(f.valor)}</span>
-            <span class="cb-sub">${f.titulo} ${situacao}</span>
-            ${f.nDepois ? `<span class="cb-sub">+ ${moed(f.depois)} em ${f.nDepois} ${f.nDepois === 1 ? 'compra' : 'compras'} depois dela</span>` : ''}
+            <span class="cb-valor num">${moed(aberta.valor)}</span>
+            <span class="cb-sub"><b>Em aberto</b> · ${aberta.titulo}</span>
+            ${estado ? `<span class="cb-sub">${estado}</span>` : ''}
+            ${ultima ? `<span class="cb-sub cb-ultima">Última: ${moed(ultima.valor)} (${ultima.titulo}) <span class="badge-ok">✓ paga em ${dataBR(ultima.pgto.data)}${contaPg ? ` pela ${esc(apelido(contaPg))}` : ''}</span></span>` : ''}
           </button>`;
       }
       const l = linhaSaldo(ym, c);
@@ -1283,44 +1306,63 @@
     });
   }
 
-  /** Saldo total no fim de cada mês: mostra de cara se o dinheiro guardado está crescendo ou acabando. */
+  /** Últimos 6 meses: entradas numa barra e gastos empilhados pelas categorias que mais pesaram. */
   function renderHistoricoCard() {
     const el = $('#histCard');
-    const bancos = contasBanco();
-    const primeiro = state.lancamentos
-      .filter(tx => bancos.some(c => c.id === tx.contaId))
-      .reduce((min, tx) => (tx.data < min ? tx.data : min), '9999').slice(0, 7);
-    el.hidden = !bancos.length || primeiro === '9999';
-    if (el.hidden) return;
-
+    el.hidden = false;
     const baseMes = addMes(mesAtualStr(), state.histOffset);
-    const dados = [-5, -4, -3, -2, -1, 0]
-      .map(i => addMes(baseMes, i))
-      .map(m => ({ m, tem: m >= primeiro && m <= mesAtualStr(), fim: saldoTotalEm(ateNoMes(m)) }));
-    const comDados = dados.filter(d => d.tem);
-    const maxAbs = Math.max(...comDados.map(d => Math.abs(d.fim)), 1);
-    const curto = v => moed(v, true).replace(/R\$\s?/, '');
-    const variacao = comDados.length > 1 ? round2(comDados[comDados.length - 1].fim - saldoTotalEm(vespera(comDados[0].m))) : null;
+    const dados = [-5, -4, -3, -2, -1, 0].map(i => {
+      const mes = addMes(baseMes, i);
+      return { mes, ...resumoMes(mes) };
+    });
+    const maxBarra = Math.max(...dados.map(d => Math.max(d.entrou, d.gastos)), 1);
+    const altura = v => (v > 0 ? Math.max(2, Math.round((v / maxBarra) * 80)) : 0);
+    const curto = v => (v > 0 ? moed(v, true).replace(/R\$\s?/, '') : '');
 
+    const somaCats = {};
+    for (const d of dados) for (const [cid, v] of Object.entries(d.porCat)) somaCats[cid] = (somaCats[cid] || 0) + v;
+    const topCats = Object.entries(somaCats).sort((a, b) => b[1] - a[1])
+      .map(([cid]) => getCat(cid)).filter(Boolean).slice(0, 4);
+    const topIds = new Set(topCats.map(c => c.id));
+
+    const colunas = dados.map(d => {
+      const segs = topCats.map(c => ({ cor: c.cor || 'var(--bar-1)', v: d.porCat[c.id] || 0 }));
+      segs.push({ cor: '#8b9999', v: Object.entries(d.porCat).filter(([cid]) => !topIds.has(cid)).reduce((a, [, v]) => a + v, 0) });
+      return `
+        <div class="hcol ${d.mes === state.mes ? 'atual' : ''}" data-mes="${d.mes}" title="Entrou ${moed(d.entrou)} · Gastos ${moed(d.gastos)}">
+          <span class="ve num">${curto(d.entrou)}</span>
+          <div class="hbars">
+            <div class="e" style="height:${altura(d.entrou)}px"></div>
+            <div class="s-stack">${segs.filter(x => x.v > 0).map(x => `<i class="s-seg" style="height:${altura(x.v)}px;background:${esc(x.cor)}"></i>`).join('')}</div>
+          </div>
+          <span class="vs num">${curto(d.gastos)}</span>
+          <span class="m">${esc(labelMesCurto(d.mes))}</span>
+        </div>`;
+    }).join('');
+
+    const comDados = dados.filter(d => d.entrou > 0 || d.gastos > 0);
+    const n = Math.max(1, comDados.length);
     el.innerHTML = `
-      <div class="card-h"><h2>Saldo no fim de cada mês</h2><span class="mut">Toque num mês</span></div>
+      <div class="card-h"><h2>Últimos 6 meses</h2><span class="mut">Toque num mês</span></div>
       <div class="hist-wrap">
         <button type="button" class="hist-nav-btn" id="histAnt" aria-label="Meses anteriores">‹</button>
-        <div class="hist">${dados.map(d => `
-          <div class="hcol ${d.m === state.mes ? 'atual' : ''}" data-mes="${d.m}" title="${d.tem ? esc(`${labelMes(d.m)}: ${moed(d.fim)}`) : ''}">
-            <span class="vs num ${d.fim < 0 ? 'neg' : ''}">${d.tem ? curto(d.fim) : ''}</span>
-            <div class="hbars"><div class="s-stack"><i class="s-seg" style="height:${d.tem ? Math.max(3, Math.round(Math.abs(d.fim) / maxAbs * 90)) : 0}px;background:${d.fim < 0 ? 'var(--neg)' : 'var(--bar-1)'}"></i></div></div>
-            <span class="m">${esc(labelMesCurto(d.m))}</span>
-          </div>`).join('')}
-        </div>
+        <div class="hist">${colunas}</div>
         <button type="button" class="hist-nav-btn" id="histProx" aria-label="Próximos meses">›</button>
       </div>
-      ${variacao !== null ? `<div class="hist-resumo"><span>Desde o início de ${esc(labelMes(comDados[0].m).split(' ')[0].toLowerCase())}: <b class="num ${variacao < 0 ? 'neg' : 'pos'}">${variacao < 0 ? '−' : '+'}${moed(Math.abs(variacao))}</b></span></div>` : ''}`;
+      <div class="leg">
+        <span><i style="background:var(--entrou)"></i>Entrou</span>
+        ${topCats.map(c => `<span><i style="background:${esc(c.cor || 'var(--bar-1)')}"></i>${esc(c.nome)}</span>`).join('')}
+        <span><i style="background:#8b9999"></i>Outros</span>
+      </div>
+      <div class="hist-resumo">
+        <span>Média entrou: <b class="num pos">${moed(comDados.reduce((a, d) => a + d.entrou, 0) / n, true)}</b></span>
+        <span>Média de gastos: <b class="num">${moed(comDados.reduce((a, d) => a + d.gastos, 0) / n, true)}</b></span>
+      </div>`;
 
     $('#histAnt', el).onclick = () => { state.histOffset--; renderHistoricoCard(); };
     $('#histProx', el).onclick = () => { state.histOffset++; renderHistoricoCard(); };
     $$('.hcol', el).forEach(col => {
-      col.onclick = () => { if (dados.find(d => d.m === col.dataset.mes).tem) { state.mes = col.dataset.mes; render(); } };
+      col.onclick = () => { state.mes = col.dataset.mes; render(); };
     });
   }
 
@@ -1361,6 +1403,7 @@
   }
 
   function renderLancamentos() {
+    $$('#fTipo button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.fTipo || '')));
     popularFiltrosLancamentos();
 
     const busca = norm($('#busca').value);
@@ -1372,6 +1415,8 @@
     const filtrados = lancamentosDoMes(state.mes)
       .filter(tx => {
         if (fSem && tx.catId) return false;
+        if (state.fTipo === 'ent' && tx.valor <= 0) return false;
+        if (state.fTipo === 'sai' && tx.valor >= 0) return false;
         if (fConta && tx.contaId !== fConta) return false;
         if (fCat) {
           if (fCat.includes(':')) {
@@ -2820,6 +2865,9 @@
     $('#fCat').onchange = () => { state.limiteLanc = 60; renderLancamentos(); };
     $('#fConta').onchange = () => { state.limiteLanc = 60; renderLancamentos(); };
     $('#fSem').onchange = () => { state.limiteLanc = 60; renderLancamentos(); };
+    $$('#fTipo button').forEach(b => {
+      b.onclick = () => { state.fTipo = b.dataset.v; state.limiteLanc = 60; renderLancamentos(); };
+    });
     $('#lancMais').onclick = () => { state.limiteLanc += 60; renderLancamentos(); };
 
     const drop = $('#drop');

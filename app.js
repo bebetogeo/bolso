@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.10.0';
+  const VERSAO = '1.10.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -2703,7 +2703,7 @@
         recarregando = true;
         window.location.reload();
       });
-      navigator.serviceWorker.register('./sw.js').then(reg => {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
         reg.update().catch(() => {});
       }).catch(() => {});
     }

@@ -1,4 +1,4 @@
-const CACHE = 'bolso-v1.10.0';
+const CACHE = 'bolso-v1.10.1';
 const ATIVOS = [
   './',
   './index.html',
@@ -15,7 +15,7 @@ const ATIVOS = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
-      .then(cache => cache.addAll(ATIVOS))
+      .then(cache => cache.addAll(ATIVOS.map(u => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -37,9 +37,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Rede primeiro para sempre pegar atualizações; cai no cache se estiver offline
+  // Rede primeiro para sempre pegar atualizações; cai no cache se estiver offline.
+  // 'no-cache' faz o navegador confirmar com o servidor (o GitHub Pages manda max-age=600, e sem isso
+  // uma versão nova só aparecia depois de até 10 minutos).
+  const naRede = req.mode === 'navigate'
+    ? new Request(req.url, { cache: 'no-cache' })
+    : new Request(req, { cache: 'no-cache' });
   event.respondWith(
-    fetch(req)
+    fetch(naRede)
       .then(res => {
         if (res && res.status === 200) {
           const copia = res.clone();

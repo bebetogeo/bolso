@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.0.2';
+  const VERSAO = '2.1.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -964,6 +964,14 @@
     return mapa;
   }
   const corDe = (cores, cid) => cores[cid] || 'var(--c-out)';
+  /** Cor de uma categoria em qualquer tela: gastos com a paleta do painel, entradas em verde, movimentações em cinza. */
+  function corCategoria(cores, cid) {
+    const c = getCat(cid);
+    if (!c) return 'var(--aviso-fg)';
+    if (c.tipo === 'receita') return 'var(--pos)';
+    if (c.tipo === 'mov') return 'var(--mut)';
+    return corDe(cores, cid);
+  }
   const mesNome = m => labelMes(m).split(' ')[0];
   const milhar = v => (v >= 0 ? '+' : '−') + (Math.abs(v) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil';
 
@@ -1350,10 +1358,10 @@
     const totSai = filtrados
       .filter(x => x.valor < 0 && getCat(x.catId)?.tipo !== 'mov')
       .reduce((a, b) => a + valorLiquidoGasto(b), 0);
-    $('#lancResumo').textContent = `${filtrados.length} ${filtrados.length === 1 ? 'lançamento' : 'lançamentos'} · +${moed(totEnt, true)} / -${moed(totSai, true)}`;
+    $('#lancResumo').innerHTML = `<span>${filtrados.length} ${filtrados.length === 1 ? 'lançamento' : 'lançamentos'}</span>
+      <span class="pl pl-e num">+${moed(totEnt, true)}</span><span class="pl pl-s num">−${moed(totSai, true)}</span>`;
 
     const temSemCat = filtrados.some(x => !x.catId);
-    $('#barTriagem').hidden = !(fSem || temSemCat);
 
     const visiveis = filtrados.slice(0, state.limiteLanc);
     const maisBtn = $('#lancMais');
@@ -1373,6 +1381,7 @@
         u[t.catId] = (u[t.catId] || 0) + 1;
       }
     }
+    const coresLanc = coresCategorias(mesesDoPainel());
     ul.innerHTML = visiveis.map(tx => {
       const dia = tx.data ? tx.data.slice(8, 10) : '--';
       const mesC = tx.data ? labelMesCurto(tx.data.slice(0, 7)) : '';
@@ -1411,10 +1420,10 @@
           <div class="valor ${tx.valor > 0 ? 'pos' : ''}">${tx.valor > 0 ? '+ ' : ''}${moed(tx.valor)}</div>
           <div class="meta">
             <div class="meta-esq">
-              <span class="${tagCls}">${esc(tagTxt)}${esc(extraInfo)}</span>
+              <span class="${tagCls}" style="color:${corCategoria(coresLanc, tx.catId)}">${esc(tagTxt)}${esc(extraInfo)}</span>
               ${tx.parcela ? `<span class="parc-tag">${esc(tx.parcela)}</span>` : ''}
             </div>
-            <span class="ct">${esc(conta ? conta.nome : '')}</span>
+            <span class="ct">${esc(conta ? nomeCurto(conta) : '')}</span>
           </div>
           ${chipsHtml}
         </li>
@@ -1914,40 +1923,69 @@
     return Math.round((soma / qtd) / 10) * 10;
   }
 
+  /** Limite por categoria: bolinha da cor, campo do limite, "usar média" ou a barra de quanto já gastou. */
   function renderOrcamento() {
     const cats = state.categorias.filter(c => c.tipo === 'gasto');
+    const cores = coresCategorias(mesesDoPainel());
+    const res = resumoMes(state.mes);
     const box = $('#orcLista');
     box.innerHTML = cats.map(c => {
-      const val = Number(state.orcamentos[c.id]) || '';
+      const lim = Number(state.orcamentos[c.id]) || 0;
       const sug = media3MesesCat(c.id);
+      const gasto = res.porCat[c.id] || 0;
+      const cor = corDe(cores, c.id);
+      const extra = lim
+        ? `<div class="orc-prog"><div class="trk"><i style="width:${Math.min(100, (gasto / lim) * 100)}%;background:${gasto > lim ? 'var(--neg)' : cor}"></i></div>
+           <span class="cd-lb num">Gastou ${moed(gasto, true)} de ${moed(lim, true)}${gasto > lim ? ` · passou ${moed(gasto - lim, true)}` : ''}</span></div>`
+        : sug > 0 ? `<button type="button" class="usar num" data-usar="${esc(c.id)}" data-v="${sug}">usar ${moed(sug, true)}</button>`
+          : '<span class="cd-lb">sem histórico</span>';
       return `
-        <div class="orc-l">
-          <div>
-            <b>${esc(c.nome)}</b>
-            <span class="sug">${sug > 0 ? `Média recente: ${moed(sug, true)}/mês` : 'Sem histórico anterior'}</span>
-          </div>
-          <input type="number" inputmode="decimal" min="0" step="10" placeholder="Sem limite" data-orc="${esc(c.id)}" value="${val}">
-        </div>
-      `;
+        <div class="orc-l2">
+          <span class="nm"><i class="bol" style="background:${cor}"></i>${esc(c.nome)}</span>
+          <input type="number" inputmode="decimal" min="0" step="10" placeholder="Sem limite" data-orc="${esc(c.id)}" value="${lim || ''}" aria-label="Limite de ${esc(c.nome)}">
+          ${extra}
+        </div>`;
     }).join('');
 
-    const atualizarTotal = () => {
-      const tot = Object.values(state.orcamentos).reduce((a, b) => a + (Number(b) || 0), 0);
-      $('#orcTotal').textContent = moed(tot);
-    };
-    atualizarTotal();
+    renderOrcResumo(res);
 
+    const salvar = async (cid, v) => {
+      if (v > 0) state.orcamentos[cid] = v;
+      else delete state.orcamentos[cid];
+      await kvSet('orcamentos', state.orcamentos);
+      renderOrcamento();
+    };
     $$('input[data-orc]', box).forEach(inp => {
-      inp.onchange = async () => {
-        const cid = inp.dataset.orc;
-        const v = Math.max(0, Number(inp.value) || 0);
-        if (v > 0) state.orcamentos[cid] = v;
-        else delete state.orcamentos[cid];
-        await kvSet('orcamentos', state.orcamentos);
-        atualizarTotal();
-        toast('Orçamento atualizado');
-      };
+      inp.onchange = async () => { await salvar(inp.dataset.orc, Math.max(0, Number(inp.value) || 0)); toast('Orçamento atualizado'); };
     });
+    $$('button[data-usar]', box).forEach(b => {
+      b.onclick = async () => { await salvar(b.dataset.usar, Number(b.dataset.v)); toast('Limite preenchido pela média'); };
+    });
+  }
+
+  /** Topo do Orçamento: quanto do total já foi usado, comparado com quanto do mês já passou. */
+  function renderOrcResumo(res) {
+    const el = $('#orcResumo');
+    const lims = Object.entries(state.orcamentos).filter(([cid, v]) => Number(v) > 0 && getCat(cid));
+    if (!lims.length) {
+      el.innerHTML = `<p class="cd-tt">Orçamento de ${esc(mesNome(state.mes).toLowerCase())}</p>
+        <p class="cd-lb">Defina limites nas categorias abaixo (ou toque em "usar" para começar pela média) e o Bolso mostra aqui quanto já foi usado.</p>`;
+      return;
+    }
+    const total = lims.reduce((a, [, v]) => a + Number(v), 0);
+    const usado = lims.reduce((a, [cid]) => a + (res.porCat[cid] || 0), 0);
+    const pct = Math.round((usado / total) * 100);
+    let ritmo = '';
+    if (state.mes === mesAtualStr()) {
+      const hoje = new Date();
+      const diasMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+      ritmo = ` · ${Math.round((hoje.getDate() / diasMes) * 100)}% do mês já passou`;
+    }
+    el.innerHTML = `
+      <p class="cd-lb">Orçamento de ${esc(mesNome(state.mes).toLowerCase())}</p>
+      <p class="orc-big num">${moed(usado, true)} <span>de ${moed(total, true)}</span></p>
+      <div class="trk"><i style="width:${Math.min(100, pct)}%;background:${pct > 100 ? 'var(--neg)' : 'var(--pri)'}"></i></div>
+      <p class="cd-lb">${pct}% usado${ritmo}</p>`;
   }
 
   function atualizarSelectSubRegra() {
@@ -1982,7 +2020,7 @@
         return `
           <li data-conta-id="${esc(c.id)}">
             <div>
-              <b>${esc(c.nome)}</b>
+              <b>${esc(nomeCurto(c))}</b>
               <small>${tipoLbl} · ${info}</small>
             </div>
             <span class="seta">›</span>
@@ -1999,7 +2037,7 @@
 
     const ulRegras = $('#regras');
     if (!state.regras.length) {
-      ulRegras.innerHTML = `<li><span class="mut">Nenhuma regra personalizada criada ainda.</span></li>`;
+      ulRegras.innerHTML = `<li><span class="mut">Nenhuma regra ainda. Elas aparecem aqui quando você classifica um lançamento.</span></li>`;
     } else {
       ulRegras.innerHTML = state.regras.map((r, idx) => `
         <li>
@@ -2037,6 +2075,7 @@
     `).join('');
 
     const ulCats = $('#cats-lista');
+    const coresAj = coresCategorias(mesesDoPainel());
     ulCats.innerHTML = state.categorias.map(c => {
       const subsTxt = (c.subs && c.subs.length)
         ? c.subs.map(s => s.nome).join(', ')
@@ -2044,7 +2083,7 @@
       return `
         <li data-cat-edit="${esc(c.id)}">
           <div>
-            <b>${esc(c.nome)}</b>
+            <b><i class="bol" style="background:${corCategoria(coresAj, c.id)}"></i>${esc(c.nome)}</b>
             <small>${esc(subsTxt)}</small>
           </div>
           <span class="seta">›</span>

@@ -1649,3 +1649,23 @@ body.privado .spark .pt-v { filter: blur(4px); }
 #cardOrc .cd-tt { font-size: 0.95rem; }
 .cd-saldo .saldo-big { color: var(--saldo-fg); }
 #cardCats .barra-cats + .ct { border-top: 0; }
+
+/* v2.1: Lançamentos, Orçamento e Ajustes no acabamento Vivo */
+.filtros input, .filtros select, .card input, .card select { border-radius: 16px; }
+.lanc-tot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pl { font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
+.pl-e { background: var(--ent-bg); color: var(--ent-fg); }
+.pl-s { background: var(--sai-bg); color: var(--sai-fg); }
+.btn-novo { background: var(--pri); color: var(--pri-fg); border: 0; border-radius: 99px; }
+.lanc .tag { background: none; padding: 0; font-weight: 600; }
+.orc-big { font-size: 1.5rem; font-weight: 600; margin: 2px 0; }
+.orc-big span { font-size: 0.85rem; font-weight: 400; color: var(--mut); }
+#orcResumo .trk, .orc-prog .trk { height: 8px; border-radius: 99px; background: var(--trk); overflow: hidden; margin: 6px 0 4px; }
+#orcResumo .trk i, .orc-prog .trk i { display: block; height: 100%; border-radius: 99px; }
+.orc-l2 { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 6px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--lin); }
+.orc-l2:first-child { border-top: 0; }
+.orc-l2 .nm { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.orc-l2 input { text-align: right; }
+.orc-l2 > .orc-prog, .orc-l2 > .usar, .orc-l2 > .cd-lb { grid-column: 1 / -1; }
+.usar { justify-self: start; appearance: none; border: 0; font: inherit; font-size: 0.75rem; font-weight: 600; padding: 4px 11px; border-radius: 99px; background: var(--pri-suave); color: var(--pri); cursor: pointer; }
+.lista b .bol { vertical-align: 1px; }

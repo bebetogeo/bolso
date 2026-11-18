@@ -80,13 +80,10 @@
       </div>
 
       <div class="row between">
-        <span class="mut" id="lancResumo"></span>
-        <button type="button" class="btn sm" id="btnNovo">+ Lançamento manual</button>
+        <span class="mut lanc-tot" id="lancResumo"></span>
+        <button type="button" class="btn sm btn-novo" id="btnNovo">+ Lançamento</button>
       </div>
 
-      <div class="aviso" id="barTriagem" hidden>
-        <span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento (✦ = sugestão inteligente) ou use <b>Rateio / Abater</b> nas entradas. O Bolso aprende sozinho com as suas escolhas.</span>
-      </div>
 
       <ul class="lanc" id="lanc"></ul>
       <button type="button" class="btn" id="lancMais" hidden>Mostrar mais</button>
@@ -142,14 +139,14 @@
     </section>
 
     <section class="view" data-view="orcamento" hidden>
+      <div class="cd" id="orcResumo"></div>
       <div class="card">
         <div class="card-h">
           <h2>Limite mensal por categoria</h2>
           <button type="button" class="lnk" id="orcSugTudo">Preencher pela média</button>
         </div>
-        <p class="mut">Deixe em branco as categorias sem limite. O Bolso compara seus gastos com o ritmo dos dias do mês.</p>
+        <p class="mut">Deixe em branco as categorias sem limite.</p>
         <div id="orcLista"></div>
-        <p class="tot">Total do orçamento: <b class="num" id="orcTotal"></b></p>
       </div>
     </section>
 
@@ -164,37 +161,20 @@
       </div>
 
       <div class="card">
-        <h2>Aparência</h2>
-        <label>Tema
-          <select id="tema">
-            <option value="auto">Igual ao do aparelho</option>
-            <option value="claro">Claro</option>
-            <option value="escuro">Escuro</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="card">
         <h2>Contas e cartões</h2>
         <ul class="lista" id="contas"></ul>
         <p class="mut" style="margin:0">Contas são criadas sozinhas quando você importa um extrato. Toque numa conta para ajustar saldo inicial, fechamento ou tipo.</p>
       </div>
 
       <div class="card">
-        <h2>Regras e aprendizado</h2>
-        <p class="mut">Além das regras fixas abaixo, o Bolso aprende automaticamente com as categorias que você escolhe.</p>
-        <ul class="lista" id="regras"></ul>
+        <h2>Cópia de segurança</h2>
+        <p class="mut">Seus dados ficam só neste aparelho. Se trocar de celular, limpar o navegador ou quiser usar em outro aparelho, use a cópia.</p>
         <div class="row">
-          <input id="rTexto" placeholder="Texto (ex.: UBER, PADARIA)" maxlength="60">
-          <select id="rCat"></select>
-          <select id="rSub" hidden aria-label="Subcategoria da regra"></select>
-          <button type="button" class="btn" id="rAdd">Criar</button>
+          <button type="button" class="btn pri" id="bkSalvar">Salvar cópia</button>
+          <label class="btn" style="color:var(--ink)">Restaurar cópia<input type="file" id="bkRestaurar" accept=".json,application/json" hidden></label>
+          <button type="button" class="btn" id="csvExport">Exportar lançamentos (CSV)</button>
         </div>
-        <p class="mut" id="iaStatus" style="margin:10px 0 0"></p>
-        <details class="padrao">
-          <summary id="regrasPadraoT"></summary>
-          <ul class="lista" id="regrasPadrao"></ul>
-        </details>
+        <p class="mut" id="bkInfo" style="margin:10px 0 0"></p>
       </div>
 
       <div class="card">
@@ -213,14 +193,34 @@
       </div>
 
       <div class="card">
-        <h2>Cópia de segurança</h2>
-        <p class="mut">Seus dados ficam só neste aparelho. Se trocar de celular, limpar o navegador ou quiser usar em outro aparelho, use a cópia.</p>
-        <div class="row">
-          <button type="button" class="btn pri" id="bkSalvar">Salvar cópia</button>
-          <label class="btn" style="color:var(--ink)">Restaurar cópia<input type="file" id="bkRestaurar" accept=".json,application/json" hidden></label>
-          <button type="button" class="btn" id="csvExport">Exportar lançamentos (CSV)</button>
-        </div>
-        <p class="mut" id="bkInfo" style="margin:10px 0 0"></p>
+        <h2>Regras</h2>
+        <p class="mut">Criadas sozinhas quando você classifica um lançamento. Valem também para os próximos extratos.</p>
+        <ul class="lista" id="regras"></ul>
+        <details class="padrao">
+          <summary>Criar regra manualmente</summary>
+          <div class="row">
+            <input id="rTexto" placeholder="Texto (ex.: UBER, PADARIA)" maxlength="60">
+            <select id="rCat"></select>
+            <select id="rSub" hidden aria-label="Subcategoria da regra"></select>
+            <button type="button" class="btn" id="rAdd">Criar</button>
+          </div>
+        </details>
+        <p class="mut" id="iaStatus" style="margin:10px 0 0"></p>
+        <details class="padrao">
+          <summary id="regrasPadraoT"></summary>
+          <ul class="lista" id="regrasPadrao"></ul>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Aparência</h2>
+        <label>Tema
+          <select id="tema">
+            <option value="auto">Igual ao do aparelho</option>
+            <option value="claro">Claro</option>
+            <option value="escuro">Escuro</option>
+          </select>
+        </label>
       </div>
 
       <div class="card perigo">

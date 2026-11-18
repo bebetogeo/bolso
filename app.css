@@ -1511,3 +1511,13 @@ dialog#dlg::backdrop {
   .tab-saldo thead th { font-size: 0.6rem; }
   .conta-tab { padding-left: 10px; padding-right: 10px; }
 }
+
+/* Box do saldo total (topo do painel) */
+.card-saldo { gap: 6px; }
+.saldo-big { font-size: clamp(1.9rem, 9vw, 2.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--pos); }
+.saldo-big.neg { color: var(--neg); }
+.saldo-data { font-size: 0.8rem; margin-top: -2px; }
+.saldo-frase { font-size: 0.95rem; line-height: 1.45; margin: 4px 0 2px; }
+.saldo-det { font-size: 0.8rem; line-height: 1.45; }
+.hbars .s-stack { width: 60%; max-width: 34px; }
+.s-seg { flex-shrink: 0; }

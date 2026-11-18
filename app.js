@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.8.2';
+  const VERSAO = '1.9.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -611,8 +611,8 @@
    *   no dia em que foi paga.
    * - porCat / gastos: para onde foi o dinheiro, com as compras do cartão na data da compra.
    */
-  function resumoMes(ym) {
-    const lista = lancamentosDoMes(ym);
+  function resumoMes(ym, diaMax = 31) {
+    const lista = lancamentosDoMes(ym).filter(tx => Number(tx.data.slice(8, 10)) <= diaMax);
     const r = {
       lista, entrou: 0, saiu: 0, qtdEntrou: 0, qtdSaiu: 0, rendimentos: 0, fatura: 0, movLiq: 0,
       compCartao: 0, gastos: 0, semCat: 0, porCat: {}, porSub: {}
@@ -689,49 +689,6 @@
     const datas = Object.keys(conta.saldos || {}).filter(d => d.startsWith(ym)).sort();
     const d = datas.pop();
     return d ? { data: d, valor: conta.saldos[d] } : null;
-  }
-
-  function detectarFixas(ym) {
-    const anteriores = [addMes(ym, -3), addMes(ym, -2), addMes(ym, -1)];
-    const grupos = new Map();
-
-    for (const m of [...anteriores, ym]) {
-      for (const tx of lancamentosDoMes(m)) {
-        const c = getCat(tx.catId);
-        if (tx.valor >= 0 || !c || c.tipo !== 'gasto' || c.id === 'pix') continue;
-        const chave = tokenizar(tx.desc).slice(0, 3).join(' ');
-        if (!chave || state.fixasOcultas.includes(chave)) continue;
-        if (!grupos.has(chave)) grupos.set(chave, { chave, catId: tx.catId, porMes: {} });
-        (grupos.get(chave).porMes[m] ||= []).push(tx);
-      }
-    }
-
-    const fixas = [];
-    for (const g of grupos.values()) {
-      // Conta fixa: aparece em pelo menos 2 dos 3 meses anteriores, uma vez só por mês, com valor parecido.
-      if (anteriores.filter(m => g.porMes[m]).length < 2) continue;
-      const listas = Object.values(g.porMes);
-      if (listas.some(l => l.length > 1)) continue;
-      const vals = listas.map(l => Math.abs(l[0].valor));
-      const media = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const tolerancia = ['moradia', 'assinaturas', 'educacao', 'saude'].includes(g.catId) ? 0.35 : 0.15;
-      if (media > 0 && (Math.max(...vals) - Math.min(...vals)) / media > tolerancia) continue;
-
-      const atualTx = g.porMes[ym] ? g.porMes[ym][0] : null;
-      const refTx = atualTx || g.porMes[anteriores.filter(m => g.porMes[m]).pop()][0];
-      const valorAtual = atualTx ? Math.abs(atualTx.valor) : round2(media);
-      fixas.push({
-        chave: g.chave,
-        nome: refTx.desc,
-        catId: refTx.catId,
-        dia: Number(refTx.data.slice(8, 10)) || 10,
-        pago: Boolean(atualTx),
-        valor: valorAtual,
-        media: round2(media),
-        alta: Boolean(atualTx) && valorAtual > media * 1.12 && valorAtual - media >= 5
-      });
-    }
-    return fixas.sort((a, b) => (a.pago === b.pago ? a.dia - b.dia : a.pago ? 1 : -1));
   }
 
   function parcelasFuturasNoMes(ym) {
@@ -908,7 +865,6 @@
     painel.hidden = false;
 
     const res = resumoMes(state.mes);
-    const ehMesAtual = state.mes === mesAtualStr();
 
     const antigos = state.lancamentos.filter(tx => tx.catOrigem === 'antigo').length;
     aviso('#avisoRefazer', antigos
@@ -928,61 +884,133 @@
       ? (ultBk ? `Última cópia de segurança há ${diasSemBk} dias.` : 'Você ainda não salvou uma cópia de segurança dos seus dados.')
       : '', [{ txt: 'Salvar cópia', acao: exportarBackup }]);
 
-    $('#kEntrou').textContent = moed(res.entrou);
-    $('#kSaiu').textContent = moed(res.saiu);
-    // Os totais somam todas as contas bancárias; o nome delas fica à vista para não parecer só uma.
-    const apelido = c => /BRASIL/i.test(c.nome) ? 'BB'
-      : c.nome.replace(/\s*\(.*\)$/, '').replace(/^Banco\s+/i, '').replace(/\s+S\.?A\.?$/i, '');
-    const contasBanco = state.contas.filter(c => c.tipo !== 'cartao').map(apelido);
-    const somaDe = contasBanco.length > 1 ? ` · soma de ${contasBanco.join(' + ')}` : '';
-    const rend = res.rendimentos > 0 ? ` + ${moed(res.rendimentos)} de rendimento` : '';
-    $('#kEntrouSub').textContent = res.qtdEntrou || res.rendimentos
-      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'}${rend}${somaDe}`
-      : 'Nenhuma entrada no mês';
-    $('#kSaiuSub').textContent = res.fatura > 0
-      ? `inclui a fatura do cartão (${moed(res.fatura)})${somaDe}`
-      : `${res.qtdSaiu} ${res.qtdSaiu === 1 ? 'saída' : 'saídas'}${somaDe}`;
-
-    const elSobra = $('#kSobra');
-    elSobra.textContent = moed(res.sobra);
-    elSobra.className = 'num ' + (res.sobra >= 0 ? 'pos' : 'neg');
-    const variacao = round2(res.sobra + res.movLiq);
-    $('#kSobraSub').textContent = Math.abs(res.movLiq) < 0.01
-      ? 'É quanto o saldo das contas mudou no mês'
-      : `Saldo das contas mudou ${moed(variacao)}: inclui ${moed(Math.abs(res.movLiq))} ${res.movLiq < 0 ? 'aplicados ou enviados para outras contas suas' : 'resgatados ou vindos de outras contas suas'}`;
-
-    const fixas = detectarFixas(state.mes);
-    const futuros = parcelasFuturasNoMes(state.mes);
-    const pendFixas = fixas.filter(f => !f.pago).reduce((acc, f) => acc + f.valor, 0);
-    const pendParc = futuros.filter(f => !f.real).reduce((acc, f) => acc + f.valor, 0);
-    $('#kpiPrev').hidden = !(ehMesAtual && pendFixas + pendParc > 0);
-    if (!$('#kpiPrev').hidden) {
-      const prevFinal = round2(res.sobra - pendFixas - pendParc);
-      $('#kPrev').textContent = moed(prevFinal);
-      $('#kPrev').className = 'num ' + (prevFinal >= 0 ? 'pos' : 'neg');
-      $('#kPrevSub').textContent = `Considerando ${moed(pendFixas + pendParc)} em contas fixas e parcelas que ainda vão vencer`;
-    }
-
+    renderSaldoCard(res);
     renderContasStrip();
     renderRateioCard();
-    renderFixasCard(fixas);
-    renderFuturoCard(futuros);
-    renderOrcamentoCard(res, ehMesAtual);
+    renderFuturoCard(parcelasFuturasNoMes(state.mes));
     renderCategoriasCard(res);
+    renderOrcamentoCard(res, state.mes === mesAtualStr());
     renderHistoricoCard();
-    renderTop5Card(res);
   }
 
-  /** Uma linha por conta: saldo no início e no fim do mês, e se bate com o saldo que o banco informou. */
+  /* ---------- Saldo das contas: o box do topo, as tabelas mês a mês e o gráfico usam as mesmas contas ---------- */
+  const contasBanco = () => state.contas.filter(c => c.tipo !== 'cartao');
+  const saldoTotalEm = data => round2(contasBanco().reduce((acc, c) => acc + saldoEm(c, data), 0));
+  const ateNoMes = m => (m === mesAtualStr() ? hojeStr() : fimDoMes(m));
+  const dataBR = d => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  const semRS = v => moed(v).replace(/R\$\s?/, '');
+  const apelido = c => /BRASIL/i.test(c.nome) ? 'BB'
+    : c.nome.replace(/\s*\(.*\)$/, '').replace(/^Banco\s+/i, '').replace(/\s+S\.?A\.?$/i, '');
+
+  /** Meses com lançamento nas contas dadas, até o mês aberto (no máximo 6), sempre incluindo o mês aberto. */
+  function mesesDasContas(ids) {
+    const ms = new Set(state.lancamentos
+      .filter(tx => ids.includes(tx.contaId) && tx.data.slice(0, 7) <= state.mes)
+      .map(tx => tx.data.slice(0, 7)));
+    ms.add(state.mes);
+    return [...ms].sort().slice(-6);
+  }
+
+  /**
+   * Uma linha da tabela: saldo no início, entradas, saídas e saldo no fim do mês.
+   * Sem conta = soma das contas bancárias; as transferências entre elas se anulam e ficam de fora.
+   */
+  function linhaSaldo(m, conta = null) {
+    if (conta) {
+      const doM = lancamentosDoMes(m).filter(tx => tx.contaId === conta.id);
+      const ext = saldoExtratoNoMes(conta, m);
+      return {
+        m,
+        ini: saldoEm(conta, vespera(m)),
+        ent: round2(doM.filter(tx => tx.valor > 0).reduce((acc, tx) => acc + tx.valor, 0)),
+        sai: round2(doM.filter(tx => tx.valor < 0).reduce((acc, tx) => acc - tx.valor, 0)),
+        fim: saldoEm(conta, ateNoMes(m)),
+        ext,
+        confere: Boolean(ext) && Math.abs(saldoEm(conta, ext.data) - ext.valor) < 0.01
+      };
+    }
+    const r = resumoMes(m);
+    return {
+      m,
+      ini: saldoTotalEm(vespera(m)),
+      ent: round2(r.entrou + Math.max(r.movLiq, 0)),
+      sai: round2(r.saiu + Math.max(-r.movLiq, 0)),
+      fim: saldoTotalEm(ateNoMes(m))
+    };
+  }
+
+  function tabelaSaldo(linhas) {
+    return `
+      <div class="tab-scroll"><table class="tab-saldo num">
+        <thead><tr><th>Mês</th><th>Saldo inicial</th><th>Entradas</th><th>Saídas</th><th>Saldo final</th></tr></thead>
+        <tbody>${linhas.map(l => `
+          <tr data-mes="${l.m}" class="${l.m === state.mes ? 'atual' : ''}" title="${l.ext ? esc(`Extrato do banco em ${dataBR(l.ext.data)}: ${moed(l.ext.valor)}`) : ''}">
+            <th>${esc(labelMesCurto(l.m))}${l.m === mesAtualStr() ? `<small>até ${dataBR(hojeStr())}</small>` : ''}</th>
+            <td>${semRS(l.ini)}</td>
+            <td class="pos">+${semRS(l.ent)}</td>
+            <td>−${semRS(l.sai)}</td>
+            <td class="${l.fim < 0 ? 'neg' : ''}">${semRS(l.fim)}${l.ext ? (l.confere ? ' <span class="badge-ok">✓</span>' : ' <span class="badge-warn">≠</span>') : ''}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  }
+
+  /** Box do topo: quanto ela tem, se guardou ou usou dinheiro no mês, e o ritmo comparado ao mês passado. */
+  function renderSaldoCard(res) {
+    const el = $('#cardSaldo');
+    const bancos = contasBanco();
+    el.hidden = !bancos.length;
+    if (!bancos.length) return;
+
+    const ym = state.mes;
+    const ehAtual = ym === mesAtualStr();
+    const l = linhaSaldo(ym);
+    const dif = round2(l.fim - l.ini);
+    const nomeMes = labelMes(ym).split(' ')[0].toLowerCase();
+    const frase = Math.abs(dif) < 0.01
+      ? `Em ${nomeMes}, entrou o mesmo que saiu.`
+      : dif < 0
+        ? `Em ${nomeMes} você <b class="neg">usou ${moed(-dif)}</b> do que tinha guardado: saiu mais do que entrou.`
+        : `Em ${nomeMes} você <b class="pos">guardou ${moed(dif)}</b>: entrou mais do que saiu.`;
+
+    const detalhes = [];
+    if (res.qtdEntrou || res.rendimentos) {
+      detalhes.push(`Entraram ${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'valor' : 'valores'}${res.rendimentos > 0 ? ` + ${moed(res.rendimentos)} de rendimento` : ''}.`);
+    }
+    if (res.fatura > 0) detalhes.push(`As saídas incluem a fatura do cartão (${moed(res.fatura)}).`);
+    if (ehAtual) {
+      const dia = Number(hojeStr().slice(8, 10));
+      const antes = resumoMes(addMes(ym, -1), dia);
+      if (antes.saiu > 0) {
+        const pct = Math.round((res.saiu / antes.saiu - 1) * 100);
+        detalhes.push(`Até o dia ${dia} saiu ${moed(res.saiu)}; em ${labelMes(addMes(ym, -1)).split(' ')[0].toLowerCase()}, até o mesmo dia, tinha saído ${moed(antes.saiu)}${Math.abs(pct) >= 5 ? ` (${Math.abs(pct)}% ${pct > 0 ? 'a mais' : 'a menos'} agora)` : ''}.`);
+      }
+    }
+
+    el.innerHTML = `
+      <div class="card-h"><h2>Saldo total</h2><span class="mut">${bancos.length > 1 ? `soma de ${bancos.map(apelido).join(' + ')}` : esc(bancos[0].nome)}</span></div>
+      <div class="saldo-big num ${l.fim < 0 ? 'neg' : ''}">${moed(l.fim)}</div>
+      <div class="mut saldo-data">${ehAtual ? `hoje, ${dataBR(hojeStr())}` : `em ${dataBR(fimDoMes(ym))}`}</div>
+      <p class="saldo-frase">${frase}</p>
+      ${tabelaSaldo(mesesDasContas(bancos.map(c => c.id)).map(m => linhaSaldo(m)))}
+      ${detalhes.length ? `<p class="mut saldo-det">${detalhes.join(' ')}</p>` : ''}`;
+
+    $$('tr[data-mes]', el).forEach(tr => {
+      tr.onclick = () => { state.mes = tr.dataset.mes; render(); };
+    });
+  }
+
+  /** Uma tabela por conta (quando há mais de uma) e o resumo de cada cartão. */
   function renderContasStrip() {
     const el = $('#contasStrip');
-    el.hidden = !state.contas.length;
+    const bancos = contasBanco();
+    const mostrar = state.contas.filter(c => c.tipo === 'cartao' || bancos.length > 1);
+    el.hidden = !mostrar.length;
     const ym = state.mes;
-    const dataBR = d => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-    el.innerHTML = state.contas.map(c => {
-      const doMes = lancamentosDoMes(ym).filter(tx => tx.contaId === c.id);
+    el.innerHTML = mostrar.map(c => {
       if (c.tipo === 'cartao') {
+        const doMes = lancamentosDoMes(ym).filter(tx => tx.contaId === c.id);
         const compras = doMes.filter(tx => tx.valor < 0 && !ehMov(tx)).reduce((acc, tx) => acc - tx.valor, 0);
         const pagamentos = doMes.filter(tx => tx.valor > 0 && ehMov(tx)).reduce((acc, tx) => acc + tx.valor, 0);
         return `
@@ -992,43 +1020,15 @@
             ${pagamentos ? `<div class="csub">Fatura paga no mês: ${moed(pagamentos)}</div>` : ''}
           </div>`;
       }
-      // Conta bancária: a evolução do saldo mês a mês, como no extrato (até 6 meses, terminando no mês aberto).
-      const meses = state.lancamentos
-        .filter(tx => tx.contaId === c.id && tx.data.slice(0, 7) <= ym)
-        .map(tx => tx.data.slice(0, 7));
-      const lista = [...new Set(meses)].sort().slice(-6);
-      if (!lista.includes(ym)) lista.push(ym);
-      const n = v => moed(v).replace(/R\$\s?/, '');
-      const linhas = lista.map(m => {
-        const doM = lancamentosDoMes(m).filter(tx => tx.contaId === c.id);
-        const ate = m === mesAtualStr() ? hojeStr() : fimDoMes(m);
-        const ent = doM.filter(tx => tx.valor > 0).reduce((acc, tx) => acc + tx.valor, 0);
-        const sai = doM.filter(tx => tx.valor < 0).reduce((acc, tx) => acc - tx.valor, 0);
-        const final = saldoEm(c, ate);
-        const ext = saldoExtratoNoMes(c, m);
-        const confere = ext && Math.abs(saldoEm(c, ext.data) - ext.valor) < 0.01;
-        const titulo = ext ? `Extrato do banco em ${dataBR(ext.data)}: ${moed(ext.valor)}` : 'Sem saldo do banco neste mês';
-        return `
-          <tr data-mes="${m}" class="${m === ym ? 'atual' : ''}">
-            <th>${esc(labelMesCurto(m))}${m === mesAtualStr() ? `<small>até ${dataBR(ate)}</small>` : ''}</th>
-            <td>${n(saldoEm(c, vespera(m)))}</td>
-            <td class="pos">+${n(ent)}</td>
-            <td>−${n(sai)}</td>
-            <td class="${final < 0 ? 'neg' : ''}" title="${esc(titulo)}">${n(final)}${ext ? (confere ? ' <span class="badge-ok">✓</span>' : ' <span class="badge-warn">≠</span>') : ''}</td>
-          </tr>`;
-      }).join('');
-      const ext = saldoExtratoNoMes(c, ym);
-      const nota = !ext ? 'Importe o extrato deste mês para conferir com o saldo do banco.'
-        : Math.abs(saldoEm(c, ext.data) - ext.valor) < 0.01
-          ? `✓ Saldo igual ao do extrato do banco em ${dataBR(ext.data)}.`
-          : `O extrato do banco em ${dataBR(ext.data)} diz ${moed(ext.valor)}; aqui está ${moed(saldoEm(c, ext.data))}. Falta importar algum período ou há lançamento duplicado.`;
+      const linhas = mesesDasContas([c.id]).map(m => linhaSaldo(m, c));
+      const atual = linhas.find(l => l.m === ym);
+      const nota = !atual.ext ? 'Importe o extrato deste mês para conferir com o saldo do banco.'
+        : atual.confere ? `✓ Saldo igual ao do extrato do banco em ${dataBR(atual.ext.data)}.`
+          : `O extrato do banco em ${dataBR(atual.ext.data)} diz ${moed(atual.ext.valor)}; aqui está ${moed(saldoEm(c, atual.ext.data))}. Falta importar algum período ou há lançamento duplicado.`;
       return `
         <div class="conta-pill conta-tab">
           <div class="cn"><span>🏦 ${esc(c.nome)}</span><button type="button" class="lnk" data-conta="${esc(c.id)}">Ver lançamentos</button></div>
-          <div class="tab-scroll"><table class="tab-saldo num">
-            <thead><tr><th>Mês</th><th>Saldo inicial</th><th>Entradas</th><th>Saídas</th><th>Saldo final</th></tr></thead>
-            <tbody>${linhas}</tbody>
-          </table></div>
+          ${tabelaSaldo(linhas)}
           <div class="csub">${nota}</div>
         </div>`;
     }).join('');
@@ -1080,48 +1080,6 @@
     });
   }
 
-  function renderFixasCard(fixas) {
-    const el = $('#cardFixas');
-    if (!fixas.length) {
-      el.hidden = true;
-      return;
-    }
-    el.hidden = false;
-    const totalFixas = fixas.reduce((acc, f) => acc + f.valor, 0);
-    el.innerHTML = `
-      <div class="card-h">
-        <h2>Contas fixas e assinaturas</h2>
-        <span class="mut num">${moed(totalFixas)}</span>
-      </div>
-      <ul class="fixas-lista">
-        ${fixas.map(f => `
-          <li>
-            <span class="fn">
-              <span>${esc(f.nome)}</span>
-              <small>${f.pago ? '✓ Lançado neste mês' : `Previsto perto do dia ${f.dia}`} · ${esc(labelCat(f.catId))}</small>
-            </span>
-            <span class="fv num ${f.pago ? '' : 'apag'}">
-              ${f.alta ? '<span class="tag-alta">↑ acima da média</span>' : ''}
-              ${moed(f.valor)}
-              <button type="button" class="x" data-ocultar="${esc(f.chave)}" title="Não é conta fixa">×</button>
-            </span>
-          </li>
-        `).join('')}
-      </ul>
-    `;
-    $$('button[data-ocultar]', el).forEach(btn => {
-      btn.onclick = async e => {
-        e.stopPropagation();
-        const ch = btn.dataset.ocultar;
-        if (!state.fixasOcultas.includes(ch)) {
-          state.fixasOcultas.push(ch);
-          await kvSet('fixasOcultas', state.fixasOcultas);
-        }
-        renderPainel();
-      };
-    });
-  }
-
   function renderFuturoCard(futuros) {
     const el = $('#cardFuturo');
     if (!futuros.length) {
@@ -1155,6 +1113,7 @@
     const hojeEl = $('#orcHoje');
     const txt = $('#orcTxt');
 
+    $('#cardOrc').hidden = !catsOrc.length;
     if (!catsOrc.length) {
       bar.style.width = '0%';
       bar.className = 'orc-fill';
@@ -1256,7 +1215,7 @@
         </div>
       `;
     }).join('') + (res.compCartao > 0 ? `
-      <p class="mut nota-cartao">Inclui ${moed(res.compCartao)} de compras no cartão, na data da compra. No “Saiu” lá em cima entra o pagamento da fatura${res.fatura ? ` (${moed(res.fatura)})` : ''}, que é o que sai da conta.</p>` : '');
+      <p class="mut nota-cartao">Inclui ${moed(res.compCartao)} de compras no cartão, na data da compra. Nas saídas da conta entra o pagamento da fatura${res.fatura ? ` (${moed(res.fatura)})` : ''}, que é o que sai da conta.</p>` : '');
 
     $$('[data-cat]', el).forEach(node => {
       node.onclick = () => node.dataset.cat === '__sem'
@@ -1265,93 +1224,47 @@
     });
   }
 
+  /** Saldo total no fim de cada mês: mostra de cara se o dinheiro guardado está crescendo ou acabando. */
   function renderHistoricoCard() {
     const el = $('#histCard');
-    const baseMes = addMes(mesAtualStr(), state.histOffset);
-    const dados = [-5, -4, -3, -2, -1, 0].map(i => {
-      const mes = addMes(baseMes, i);
-      return { mes, ...resumoMes(mes) };
-    });
-    const maxBarra = Math.max(...dados.map(d => Math.max(d.entrou, d.saiu)), 1);
-    const curto = v => (v > 0 ? moed(v, true).replace(/R\$\s?/, '') : '');
-    const altura = v => (v > 0 ? Math.max(3, Math.round((v / maxBarra) * 80)) : 0);
+    const bancos = contasBanco();
+    const primeiro = state.lancamentos
+      .filter(tx => bancos.some(c => c.id === tx.contaId))
+      .reduce((min, tx) => (tx.data < min ? tx.data : min), '9999').slice(0, 7);
+    el.hidden = !bancos.length || primeiro === '9999';
+    if (el.hidden) return;
 
-    const comDados = dados.filter(d => d.entrou > 0 || d.saiu > 0);
-    const n = Math.max(1, comDados.length);
-    const medEnt = comDados.reduce((a, d) => a + d.entrou, 0) / n;
-    const medSai = comDados.reduce((a, d) => a + d.saiu, 0) / n;
+    const baseMes = addMes(mesAtualStr(), state.histOffset);
+    const dados = [-5, -4, -3, -2, -1, 0]
+      .map(i => addMes(baseMes, i))
+      .map(m => ({ m, tem: m >= primeiro && m <= mesAtualStr(), fim: saldoTotalEm(ateNoMes(m)) }));
+    const comDados = dados.filter(d => d.tem);
+    const maxAbs = Math.max(...comDados.map(d => Math.abs(d.fim)), 1);
+    const curto = v => moed(v, true).replace(/R\$\s?/, '');
+    const variacao = comDados.length > 1 ? round2(comDados[comDados.length - 1].fim - saldoTotalEm(vespera(comDados[0].m))) : null;
 
     el.innerHTML = `
-      <div class="card-h"><h2>Últimos 6 meses</h2><span class="mut">Toque num mês</span></div>
+      <div class="card-h"><h2>Saldo no fim de cada mês</h2><span class="mut">Toque num mês</span></div>
       <div class="hist-wrap">
         <button type="button" class="hist-nav-btn" id="histAnt" aria-label="Meses anteriores">‹</button>
         <div class="hist">${dados.map(d => `
-          <div class="hcol ${d.mes === state.mes ? 'atual' : ''}" data-mes="${d.mes}" title="Entrou ${moed(d.entrou)} · Saiu ${moed(d.saiu)}">
-            <span class="ve num">${curto(d.entrou)}</span>
-            <div class="hbars">
-              <div class="e" style="height:${altura(d.entrou)}px"></div>
-              <div class="s-stack"><i class="s-seg" style="height:${altura(d.saiu)}px;background:var(--bar)"></i></div>
-            </div>
-            <span class="vs num">${curto(d.saiu)}</span>
-            <span class="m">${esc(labelMesCurto(d.mes))}</span>
+          <div class="hcol ${d.m === state.mes ? 'atual' : ''}" data-mes="${d.m}" title="${d.tem ? esc(`${labelMes(d.m)}: ${moed(d.fim)}`) : ''}">
+            <span class="vs num ${d.fim < 0 ? 'neg' : ''}">${d.tem ? curto(d.fim) : ''}</span>
+            <div class="hbars"><div class="s-stack"><i class="s-seg" style="height:${d.tem ? Math.max(3, Math.round(Math.abs(d.fim) / maxAbs * 90)) : 0}px;background:${d.fim < 0 ? 'var(--neg)' : 'var(--bar-1)'}"></i></div></div>
+            <span class="m">${esc(labelMesCurto(d.m))}</span>
           </div>`).join('')}
         </div>
         <button type="button" class="hist-nav-btn" id="histProx" aria-label="Próximos meses">›</button>
       </div>
-      <div class="leg"><span><i style="background:var(--bar-2)"></i>Entrou</span><span><i style="background:var(--bar)"></i>Saiu</span></div>
-      <div class="hist-resumo">
-        <span>Média entrou: <b class="num pos">${moed(medEnt, true)}</b></span>
-        <span>Média saiu: <b class="num">${moed(medSai, true)}</b></span>
-      </div>`;
+      ${variacao !== null ? `<div class="hist-resumo"><span>Desde o início de ${esc(labelMes(comDados[0].m).split(' ')[0].toLowerCase())}: <b class="num ${variacao < 0 ? 'neg' : 'pos'}">${variacao < 0 ? '−' : '+'}${moed(Math.abs(variacao))}</b></span></div>` : ''}`;
 
     $('#histAnt', el).onclick = () => { state.histOffset--; renderHistoricoCard(); };
     $('#histProx', el).onclick = () => { state.histOffset++; renderHistoricoCard(); };
     $$('.hcol', el).forEach(col => {
-      col.onclick = () => { state.mes = col.dataset.mes; render(); };
+      col.onclick = () => { if (dados.find(d => d.m === col.dataset.mes).tem) { state.mes = col.dataset.mes; render(); } };
     });
   }
 
-  function renderTop5Card(res) {
-    const el = $('#top5');
-    const gastos = res.lista
-      .filter(tx => {
-        if (tx.valor >= 0) return false;
-        const c = getCat(tx.catId);
-        return !c || c.tipo === 'gasto';
-      })
-      .sort((a, b) => valorLiquidoGasto(b) - valorLiquidoGasto(a))
-      .slice(0, 5);
-
-    if (!gastos.length) {
-      el.innerHTML = `<li style="cursor:default;color:var(--mut)">Nenhum gasto neste mês.</li>`;
-      return;
-    }
-
-    el.innerHTML = gastos.map(tx => {
-      const liq = valorLiquidoGasto(tx);
-      const dia = `${tx.data.slice(8, 10)}/${tx.data.slice(5, 7)}`;
-      return `
-        <li data-id="${esc(tx.id)}">
-          <span class="d">
-            <span>${esc(tx.desc)}</span>
-            <small>${dia} · ${esc(labelCat(tx.catId, tx.subId))}${tx.abatido > 0 ? ` · abatido ${moed(tx.abatido)}` : ''}</small>
-          </span>
-          <span class="valor">${moed(liq)}</span>
-        </li>
-      `;
-    }).join('');
-
-    $$('li[data-id]', el).forEach(li => {
-      li.onclick = () => {
-        const tx = state.lancamentos.find(x => x.id === li.dataset.id);
-        if (tx) abrirModalLancamento(tx);
-      };
-    });
-  }
-
-  /* ========================================================================
-     Renderização: Lançamentos e Modo Triagem
-     ======================================================================== */
   function popularFiltrosLancamentos() {
     const fCat = $('#fCat');
     const valCat = fCat.value;

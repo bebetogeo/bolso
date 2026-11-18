@@ -51,35 +51,26 @@
         <div class="aviso" id="avisoRevisar" hidden></div>
         <div class="aviso" id="avisoBackup" hidden></div>
 
-        <div class="kpis">
-          <div class="kpi"><span class="lbl">Entrou</span><span class="num pos" id="kEntrou"></span><span class="sub" id="kEntrouSub"></span></div>
-          <div class="kpi"><span class="lbl">Saiu</span><span class="num" id="kSaiu"></span><span class="sub" id="kSaiuSub"></span></div>
-          <div class="kpi"><span class="lbl">Sobrou</span><span class="num" id="kSobra"></span><span class="sub" id="kSobraSub"></span></div>
-          <div class="kpi" id="kpiPrev" hidden><span class="lbl">Previsão final do mês</span><span class="num" id="kPrev"></span><span class="sub" id="kPrevSub"></span></div>
-        </div>
+        <div class="card card-saldo" id="cardSaldo" hidden></div>
 
         <div class="contas-strip" id="contasStrip" hidden></div>
         <div class="card card-rateio" id="cardRateio" hidden></div>
-        <div class="card" id="cardFixas" hidden></div>
         <div class="card" id="cardFuturo" hidden></div>
 
-        <div class="card">
-          <div class="card-h"><h2>Orçamento do mês</h2><button type="button" class="lnk" data-go="orcamento">Ajustar</button></div>
-          <div class="orc-barra" id="orcBarra"><div class="orc-fill" id="orcFill"></div><div class="orc-hoje" id="orcHoje"></div></div>
-          <p class="orc-txt" id="orcTxt"></p>
-        </div>
 
         <div class="card">
           <h2>Para onde foi o dinheiro</h2>
           <div id="cats"></div>
         </div>
 
+        <div class="card" id="cardOrc" hidden>
+          <div class="card-h"><h2>Orçamento do mês</h2><button type="button" class="lnk" data-go="orcamento">Ajustar</button></div>
+          <div class="orc-barra" id="orcBarra"><div class="orc-fill" id="orcFill"></div><div class="orc-hoje" id="orcHoje"></div></div>
+          <p class="orc-txt" id="orcTxt"></p>
+        </div>
+
         <div class="card" id="histCard"></div>
 
-        <div class="card">
-          <div class="card-h"><h2>Maiores gastos do mês</h2><button type="button" class="lnk" data-go="lancamentos">Ver todos</button></div>
-          <ul class="top5" id="top5"></ul>
-        </div>
       </div>
     </section>
 

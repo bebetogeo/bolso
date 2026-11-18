@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.8.0';
+  const VERSAO = '1.8.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -928,12 +928,17 @@
 
     $('#kEntrou').textContent = moed(res.entrou);
     $('#kSaiu').textContent = moed(res.saiu);
+    // Os totais somam todas as contas bancárias; o nome delas fica à vista para não parecer só uma.
+    const apelido = c => /BRASIL/i.test(c.nome) ? 'BB'
+      : c.nome.replace(/\s*\(.*\)$/, '').replace(/^Banco\s+/i, '').replace(/\s+S\.?A\.?$/i, '');
+    const contasBanco = state.contas.filter(c => c.tipo !== 'cartao').map(apelido);
+    const somaDe = contasBanco.length > 1 ? ` · soma de ${contasBanco.join(' + ')}` : '';
     $('#kEntrouSub').textContent = res.qtdEntrou
-      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'} nas contas`
+      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'}${somaDe}`
       : 'Nenhuma entrada no mês';
     $('#kSaiuSub').textContent = res.fatura > 0
-      ? `inclui a fatura do cartão (${moed(res.fatura)})`
-      : `${res.qtdSaiu} ${res.qtdSaiu === 1 ? 'saída' : 'saídas'} das contas`;
+      ? `inclui a fatura do cartão (${moed(res.fatura)})${somaDe}`
+      : `${res.qtdSaiu} ${res.qtdSaiu === 1 ? 'saída' : 'saídas'}${somaDe}`;
 
     const elSobra = $('#kSobra');
     elSobra.textContent = moed(res.sobra);
@@ -970,7 +975,6 @@
     const el = $('#contasStrip');
     el.hidden = !state.contas.length;
     const ym = state.mes;
-    const fim = ym === mesAtualStr() ? hojeStr() : fimDoMes(ym);
     const dataBR = d => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
     el.innerHTML = state.contas.map(c => {
@@ -985,28 +989,52 @@
             ${pagamentos ? `<div class="csub">Fatura paga no mês: ${moed(pagamentos)}</div>` : ''}
           </div>`;
       }
-      const ini = saldoEm(c, vespera(ym));
-      const final = saldoEm(c, fim);
-      const ent = doMes.filter(tx => tx.valor > 0).reduce((acc, tx) => acc + tx.valor, 0);
-      const sai = doMes.filter(tx => tx.valor < 0).reduce((acc, tx) => acc - tx.valor, 0);
+      // Conta bancária: a evolução do saldo mês a mês, como no extrato (até 6 meses, terminando no mês aberto).
+      const meses = state.lancamentos
+        .filter(tx => tx.contaId === c.id && tx.data.slice(0, 7) <= ym)
+        .map(tx => tx.data.slice(0, 7));
+      const lista = [...new Set(meses)].sort().slice(-6);
+      if (!lista.includes(ym)) lista.push(ym);
+      const n = v => moed(v).replace(/R\$\s?/, '');
+      const linhas = lista.map(m => {
+        const doM = lancamentosDoMes(m).filter(tx => tx.contaId === c.id);
+        const ate = m === mesAtualStr() ? hojeStr() : fimDoMes(m);
+        const ent = doM.filter(tx => tx.valor > 0).reduce((acc, tx) => acc + tx.valor, 0);
+        const sai = doM.filter(tx => tx.valor < 0).reduce((acc, tx) => acc - tx.valor, 0);
+        const final = saldoEm(c, ate);
+        const ext = saldoExtratoNoMes(c, m);
+        const confere = ext && Math.abs(saldoEm(c, ext.data) - ext.valor) < 0.01;
+        const titulo = ext ? `Extrato do banco em ${dataBR(ext.data)}: ${moed(ext.valor)}` : 'Sem saldo do banco neste mês';
+        return `
+          <tr data-mes="${m}" class="${m === ym ? 'atual' : ''}">
+            <th>${esc(labelMesCurto(m))}${m === mesAtualStr() ? `<small>até ${dataBR(ate)}</small>` : ''}</th>
+            <td>${n(saldoEm(c, vespera(m)))}</td>
+            <td class="pos">+${n(ent)}</td>
+            <td>−${n(sai)}</td>
+            <td class="${final < 0 ? 'neg' : ''}" title="${esc(titulo)}">${n(final)}${ext ? (confere ? ' <span class="badge-ok">✓</span>' : ' <span class="badge-warn">≠</span>') : ''}</td>
+          </tr>`;
+      }).join('');
       const ext = saldoExtratoNoMes(c, ym);
-      let badge = '';
-      if (ext) {
-        const calc = saldoEm(c, ext.data);
-        badge = Math.abs(calc - ext.valor) < 0.01
-          ? `<span class="badge-ok">✓ igual ao extrato de ${dataBR(ext.data)}</span>`
-          : `<span class="badge-warn">Extrato de ${dataBR(ext.data)}: ${moed(ext.valor)} (diferença ${moed(calc - ext.valor)})</span>`;
-      }
+      const nota = !ext ? 'Importe o extrato deste mês para conferir com o saldo do banco.'
+        : Math.abs(saldoEm(c, ext.data) - ext.valor) < 0.01
+          ? `✓ Saldo igual ao do extrato do banco em ${dataBR(ext.data)}.`
+          : `O extrato do banco em ${dataBR(ext.data)} diz ${moed(ext.valor)}; aqui está ${moed(saldoEm(c, ext.data))}. Falta importar algum período ou há lançamento duplicado.`;
       return `
-        <div class="conta-pill" data-conta="${esc(c.id)}">
-          <div class="cn"><span>🏦 ${esc(c.nome)}</span>${badge}</div>
-          <div class="cv num ${final >= 0 ? 'pos' : 'neg'}">${moed(final)}</div>
-          <div class="csub num">${moed(ini)} em ${dataBR(vespera(ym))} · +${moed(ent)} · −${moed(sai)}</div>
+        <div class="conta-pill conta-tab">
+          <div class="cn"><span>🏦 ${esc(c.nome)}</span><button type="button" class="lnk" data-conta="${esc(c.id)}">Ver lançamentos</button></div>
+          <div class="tab-scroll"><table class="tab-saldo num">
+            <thead><tr><th>Mês</th><th>Saldo inicial</th><th>Entradas</th><th>Saídas</th><th>Saldo final</th></tr></thead>
+            <tbody>${linhas}</tbody>
+          </table></div>
+          <div class="csub">${nota}</div>
         </div>`;
     }).join('');
 
-    $$('.conta-pill', el).forEach(pill => {
-      pill.onclick = () => irParaLancamentos({ conta: pill.dataset.conta });
+    $$('.conta-pill[data-conta], button[data-conta]', el).forEach(b => {
+      b.onclick = () => irParaLancamentos({ conta: b.dataset.conta });
+    });
+    $$('tr[data-mes]', el).forEach(tr => {
+      tr.onclick = () => { state.mes = tr.dataset.mes; render(); };
     });
   }
 

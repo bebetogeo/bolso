@@ -1493,3 +1493,21 @@ dialog#dlg::backdrop {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   text-align: center;
 }
+
+/* Tabela mês a mês de cada conta (saldo inicial, entradas, saídas, saldo final) */
+.conta-tab { cursor: default; gap: 8px; }
+.tab-scroll { overflow-x: auto; margin: 0 -4px; }
+.tab-saldo { width: 100%; border-collapse: collapse; font-size: 0.8rem; white-space: nowrap; }
+.tab-saldo th, .tab-saldo td { padding: 6px 4px; text-align: right; border-top: 1px solid var(--borda); }
+.tab-saldo thead th { border-top: 0; font-size: 0.68rem; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: 0.03em; white-space: normal; vertical-align: bottom; }
+.tab-saldo th:first-child { text-align: left; text-transform: capitalize; }
+.tab-saldo tbody th small { display: block; font-weight: 400; color: var(--mut); text-transform: none; font-size: 0.68rem; }
+.tab-saldo tbody tr { cursor: pointer; }
+.tab-saldo tbody tr.atual { background: var(--card-alt); font-weight: 700; }
+.tab-saldo td:last-child { font-weight: 700; }
+@media (max-width: 440px) {
+  .tab-saldo { font-size: 0.72rem; letter-spacing: -0.02em; }
+  .tab-saldo th, .tab-saldo td { padding: 6px 2px; }
+  .tab-saldo thead th { font-size: 0.6rem; }
+  .conta-tab { padding-left: 10px; padding-right: 10px; }
+}

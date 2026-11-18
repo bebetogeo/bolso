@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.1.1';
+  const VERSAO = '2.1.2';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 

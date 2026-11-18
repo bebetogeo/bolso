@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Bolso — Folha de estilos completa (v1.6.1)
+   Bolso — Folha de estilos completa (v1.7.0)
    ========================================================================== */
 
 /* 1. Variáveis e Temas (Claro / Escuro / Automático)
@@ -465,11 +465,32 @@ header.top {
 .conta-pill .cn {
   font-size: 0.84rem;
   color: var(--mut);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .conta-pill .cv {
   font-size: 1rem;
   font-weight: 700;
+}
+
+.conta-pill .csub {
+  font-size: 0.78rem;
+  color: var(--mut);
+}
+
+.badge-ok {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--pos);
+}
+
+.badge-warn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #d99b26;
 }
 
 /* Card de Rateio pendente */

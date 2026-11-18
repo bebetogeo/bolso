@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.8.1';
+  const VERSAO = '1.8.2';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -614,7 +614,7 @@
   function resumoMes(ym) {
     const lista = lancamentosDoMes(ym);
     const r = {
-      lista, entrou: 0, saiu: 0, qtdEntrou: 0, qtdSaiu: 0, fatura: 0, movLiq: 0,
+      lista, entrou: 0, saiu: 0, qtdEntrou: 0, qtdSaiu: 0, rendimentos: 0, fatura: 0, movLiq: 0,
       compCartao: 0, gastos: 0, semCat: 0, porCat: {}, porSub: {}
     };
 
@@ -628,7 +628,9 @@
           r.movLiq += tx.valor;
         } else if (tx.valor > 0) {
           r.entrou += tx.valor;
-          r.qtdEntrou++;
+          // Rendimento automático diário (centavos) não é "uma entrada" para quem lê o painel.
+          if (tx.catId === 'rendimentos' && /RENDIMENTO/.test(norm(tx.desc))) r.rendimentos += tx.valor;
+          else r.qtdEntrou++;
         } else {
           r.saiu -= tx.valor;
           r.qtdSaiu++;
@@ -648,7 +650,7 @@
       }
     }
 
-    for (const k of ['entrou', 'saiu', 'fatura', 'movLiq', 'compCartao', 'gastos']) r[k] = round2(r[k]);
+    for (const k of ['entrou', 'saiu', 'rendimentos', 'fatura', 'movLiq', 'compCartao', 'gastos']) r[k] = round2(r[k]);
     for (const k of Object.keys(r.porCat)) r.porCat[k] = round2(r.porCat[k]);
     for (const k of Object.keys(r.porSub)) r.porSub[k] = round2(r.porSub[k]);
     r.sobra = round2(r.entrou - r.saiu);
@@ -933,8 +935,9 @@
       : c.nome.replace(/\s*\(.*\)$/, '').replace(/^Banco\s+/i, '').replace(/\s+S\.?A\.?$/i, '');
     const contasBanco = state.contas.filter(c => c.tipo !== 'cartao').map(apelido);
     const somaDe = contasBanco.length > 1 ? ` · soma de ${contasBanco.join(' + ')}` : '';
-    $('#kEntrouSub').textContent = res.qtdEntrou
-      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'}${somaDe}`
+    const rend = res.rendimentos > 0 ? ` + ${moed(res.rendimentos)} de rendimento` : '';
+    $('#kEntrouSub').textContent = res.qtdEntrou || res.rendimentos
+      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'}${rend}${somaDe}`
       : 'Nenhuma entrada no mês';
     $('#kSaiuSub').textContent = res.fatura > 0
       ? `inclui a fatura do cartão (${moed(res.fatura)})${somaDe}`

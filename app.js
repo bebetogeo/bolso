@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.1.0';
+  const VERSAO = '2.1.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1332,6 +1332,9 @@
     const filtrados = lancamentosDoMes(state.mes)
       .filter(tx => {
         if (fSem && tx.catId) return false;
+        // Entradas e Saídas mostram só o que conta: transferências entre as próprias contas,
+        // aplicações e pagamento de fatura ficam só em "Todos" (com a etiqueta cinza).
+        if ((state.fTipo === 'ent' || state.fTipo === 'sai') && ehMov(tx)) return false;
         if (state.fTipo === 'ent' && tx.valor <= 0) return false;
         if (state.fTipo === 'sai' && tx.valor >= 0) return false;
         if (fConta && tx.contaId !== fConta) return false;

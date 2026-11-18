@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.0.1';
+  const VERSAO = '2.0.2';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -980,12 +980,14 @@
     const lo = Math.min(...pontos);
     const hi = Math.max(...pontos);
     const y = v => (hi === lo ? 52 : Math.round(30 + (1 - (v - lo) / (hi - lo)) * 44));
-    const x = i => Math.round(26 + (i / Math.max(1, pontos.length - 1)) * 248);
+    // Desenha na largura real do bloco: no computador a linha estica, mas o texto fica do tamanho do celular.
+    const largura = Math.max(260, Math.round((el.clientWidth || 300) - 32));
+    const x = i => Math.round(26 + (i / Math.max(1, pontos.length - 1)) * (largura - 52));
     const curto = v => (Math.abs(v) >= 1000
       ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
       : Math.round(v).toLocaleString('pt-BR'));
     const grafico = pontos.length < 2 ? '' : `
-      <svg class="spark" viewBox="0 0 300 104" aria-hidden="true">
+      <svg class="spark" viewBox="0 0 ${largura} 104" width="${largura}" height="104" aria-hidden="true">
         <polyline points="${pontos.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/>
         ${pontos.map((v, i) => `
           <circle cx="${x(i)}" cy="${y(v)}" r="4.5" class="${i === pontos.length - 1 ? 'pt-ult' : 'pt'}"/>
@@ -2696,6 +2698,13 @@
   /* ========================================================================
      PWA / Instalação e Eventos Globais
      ======================================================================== */
+  // A linha do saldo é desenhada na largura do bloco; ao mudar o tamanho da janela, redesenha.
+  let timerResize = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(timerResize);
+    timerResize = setTimeout(() => { if (state.view === 'painel') renderPainel(); }, 150);
+  });
+
   function configurarPWA() {
     if ('serviceWorker' in navigator) {
       let recarregando = false;

@@ -1585,7 +1585,7 @@ button.cd { appearance: none; font: inherit; text-align: left; cursor: pointer; 
 .pilula { align-self: flex-start; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
 .p-neg { background: var(--pneg-bg); color: var(--pneg-fg); }
 .p-pos { background: var(--ppos-bg); color: var(--ppos-fg); }
-.spark { width: 100%; height: auto; display: block; margin-top: 8px; overflow: visible; }
+.spark { width: 100%; height: 104px; display: block; margin-top: 8px; overflow: visible; }
 .spark polyline { fill: none; stroke: var(--spark); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .spark .pt { fill: var(--spark); }
 .spark .pt-ult { fill: var(--saldo-fg); }

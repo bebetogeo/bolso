@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.1.2';
+  const VERSAO = '2.1.3';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1217,11 +1217,21 @@
         const subs = cat ? (cat.subs || []).map(sb => [sb.nome, res.porSub[`${cid}:${sb.id}`] || 0]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]) : [];
         const lim = Number(state.orcamentos[cid]) || 0;
         const aberto = state.catsAbertas.has(cid);
+        // Com limite, a barra mostra quanto do limite foi usado (cheia e vermelha ao estourar);
+        // sem limite, compara com a maior categoria do mês.
+        const usoLim = lim ? v / lim : 0;
+        const estado = !lim ? '' : usoLim > 1 ? 'estourou' : usoLim >= 0.85 ? 'quase' : '';
+        const largura = lim ? Math.min(100, Math.round(usoLim * 100)) : Math.round((v / maior) * 100);
+        const corBarra = estado === 'estourou' ? 'var(--estourou)' : corDe(cores, cid);
+        const textoLim = !lim ? 'sem limite'
+          : estado === 'estourou' ? `<b class="ngc">passou ${moed(v - lim, true)} (${Math.round(usoLim * 100)}%)</b>`
+            : estado === 'quase' ? `<b class="quase">${Math.round(usoLim * 100)}% de ${moed(lim, true)}</b>`
+              : `${Math.round(usoLim * 100)}% de ${moed(lim, true)}`;
         return `
           <div class="ct ${aberto ? 'open' : ''}" data-cid="${esc(cid)}" data-subs="${subs.length}">
-            <div class="cth"><span><i class="bol" style="background:${corDe(cores, cid)}"></i><b>${esc(nome)}</b>${subs.length ? ` <span class="seta-c">${aberto ? '▾' : '▸'}</span>` : ''}</span><b class="num">${moed(v)}</b></div>
-            <div class="trk"><i style="width:${Math.round((v / maior) * 100)}%;background:${corDe(cores, cid)}"></i></div>
-            <div class="ctm"><span>${Math.round((v / tot) * 100)}% dos gastos</span><span>${lim ? `${Math.round((v / lim) * 100)}% do limite` : 'sem limite'}</span></div>
+            <div class="cth"><span><i class="bol" style="background:${corDe(cores, cid)}"></i><b>${esc(nome)}</b>${subs.length ? ` <span class="seta-c">${aberto ? '▾' : '▸'}</span>` : ''}</span><b class="num ${estado === 'estourou' ? 'ngc' : ''}">${estado === 'estourou' ? '<i class="alerta" aria-label="passou do limite"></i>' : ''}${moed(v)}</b></div>
+            <div class="trk"><i style="width:${largura}%;background:${corBarra}"></i></div>
+            <div class="ctm"><span>${Math.round((v / tot) * 100)}% dos gastos</span><span>${textoLim}</span></div>
             ${subs.length ? `<div class="subs" style="border-color:${corDe(cores, cid)}">${subs.map(([n, sv]) => `<div><span>${esc(n)}</span><span class="num">${moed(sv)}</span></div>`).join('')}</div>` : ''}
           </div>`;
       }).join('')}

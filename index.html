@@ -57,6 +57,7 @@
         </div>
 
         <div class="contas-strip" id="contasStrip" hidden></div>
+        <div class="card card-rateio" id="cardRateio" hidden></div>
         <div class="card" id="cardFixas" hidden></div>
         <div class="card" id="cardFuturo" hidden></div>
 
@@ -94,7 +95,7 @@
       </div>
 
       <div class="aviso" id="barTriagem" hidden>
-        <span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento (✦ = sugestão inteligente). O Bolso aprende sozinho com as suas escolhas.</span>
+        <span><b>Modo triagem:</b> toque numa categoria abaixo do lançamento (✦ = sugestão inteligente) ou use <b>Rateio / Abater</b> nas entradas. O Bolso aprende sozinho com as suas escolhas.</span>
       </div>
 
       <ul class="lanc" id="lanc"></ul>
@@ -190,6 +191,7 @@
         <div class="row">
           <input id="rTexto" placeholder="Texto (ex.: UBER, PADARIA)" maxlength="60">
           <select id="rCat"></select>
+          <select id="rSub" hidden aria-label="Subcategoria da regra"></select>
           <button type="button" class="btn" id="rAdd">Criar</button>
         </div>
         <p class="mut" id="iaStatus" style="margin:10px 0 0"></p>
@@ -202,6 +204,7 @@
       <div class="card">
         <h2>Categorias</h2>
         <ul class="lista" id="cats-lista"></ul>
+        <p class="mut" style="margin:0">Toque numa categoria para editar o nome ou gerenciar suas subcategorias.</p>
         <div class="row">
           <input id="cNome" placeholder="Nova categoria" maxlength="40">
           <select id="cTipo">

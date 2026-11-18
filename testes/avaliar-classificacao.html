@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bolso · medir a classificação</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #2C2C2A; background: #F1EFE8; }
+  .cd { background: #fff; border-radius: 16px; padding: 16px; margin: 12px 0; }
+  h1 { font-size: 1.3rem; } h2 { font-size: 1rem; margin: 0 0 6px; }
+  .n { font-size: 1.6rem; font-weight: 600; }
+  small, .mut { color: #5F5E5A; }
+  li { margin: 3px 0; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<h1>Medir a classificação do Bolso</h1>
+<p class="mut">Escolha um CSV exportado em Ajustes › Exportar lançamentos. O arquivo é lido só neste navegador; nada é enviado.
+Para cada lançamento já classificado, a página esconde todos os lançamentos com o mesmo nome (como se a loja ou pessoa fosse nova),
+pede a sugestão ao classificador do app e compara com a categoria escolhida.</p>
+<input type="file" id="arq" accept=".csv">
+<div id="saida"></div>
+<script src="../classificador.js"></script>
+<script>
+const RECEITA = /sal[aá]rio|rendimento|receita|entrada/i;
+const MOV = /transfer[eê]ncia \/ fatura/i;
+const parse = l => { const out = []; let cur = '', q = false; for (const ch of l) { if (ch === '"') q = !q; else if (ch === ';' && !q) { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; };
+document.getElementById('arq').onchange = async e => {
+  const txt = await e.target.files[0].text();
+  const R = txt.replace(/^﻿/, '').split(/\r?\n/).filter(Boolean).slice(1).map(parse)
+    .map(r => ({ desc: r[1], valor: Number(String(r[2]).replace(/\./g, '').replace(',', '.')), catId: r[3], key: r[3], cartao: /cart/i.test(r[5]) }));
+  const dados = R.filter(r => r.catId && !MOV.test(r.catId));
+  const ok = (k, v) => v > 0 ? RECEITA.test(k) : !RECEITA.test(k);
+  const nome = r => BolsoIA.textoRegra(r.desc, 2);
+  let sug = 0, ac = 0, bt = 0; const erros = [];
+  for (const r of dados) {
+    const treino = dados.filter(x => nome(x) !== nome(r));
+    const p = BolsoIA.prever(BolsoIA.treinar(treino), r, k => ok(k, r.valor));
+    if (p) { sug++; if (p.key === r.catId) ac++; else if (erros.length < 10) erros.push(`${r.desc} — escolhida: ${r.catId}; sugerida: ${p.key}`); }
+    if (BolsoIA.botoes(treino, r, k => ok(k, r.valor)).slice(0, 3).includes(r.catId)) bt++;
+  }
+  let pegou = 0, errado = 0;
+  for (const r of dados) {
+    const t = nome(r);
+    for (const o of dados) if (o !== r && ` ${BolsoIA.norm(o.desc).replace(/\*/g, ' ')} `.includes(` ${t}`)) { pegou++; if (o.catId !== r.catId) errado++; }
+  }
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+  document.getElementById('saida').innerHTML = `
+    <div class="cd"><h2>Sugestão ✦ em loja ou pessoa nova</h2><span class="n">${pct(ac, sug)}</span> de acerto
+      <p class="mut">Sugeriu em ${sug} de ${dados.length} lançamentos (${pct(sug, dados.length)}); acertou ${ac}.</p>
+      ${erros.length ? `<ul>${erros.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}</div>
+    <div class="cd"><h2>Botões rápidos</h2><span class="n">${pct(bt, dados.length)}</span> das vezes a categoria certa está entre os 3 botões</div>
+    <div class="cd"><h2>Regras automáticas</h2><span class="n">${pct(errado, pegou)}</span> dos lançamentos pegos teriam outra categoria
+      <p class="mut">${errado} de ${pegou} lançamentos que as regras criadas a partir destes pegariam.</p></div>
+    <p class="mut">${dados.length} lançamentos classificados · ${R.length - dados.length} sem categoria ou transferências.</p>`;
+};
+</script>
+</body>
+</html>

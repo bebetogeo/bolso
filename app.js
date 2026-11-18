@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.1.4';
+  const VERSAO = '2.2.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -129,7 +129,8 @@
     orcamentos: {},
     lancamentos: [],
     fixasOcultas: [],
-    ia: { vocab: {}, catCounts: {}, totalDocs: 0 },
+    ia: null,
+    iaEx: [],
     csvFila: [],
     csvAtual: null,
     installPrompt: null
@@ -454,43 +455,23 @@
   /* ========================================================================
      Inteligência Local (Regras + Titularidade + Naive Bayes)
      ======================================================================== */
-  // Palavras que aparecem em qualquer lançamento ("Compra com Cartão", "Pagamento de Boleto") e
-  // por isso não dizem nada sobre a categoria. Sem elas, o aprendizado não chuta tudo para a mesma.
-  const STOP_TOKENS = new Set((
-    'PIX ENVIADO ENVIADA RECEBIDO RECEBIDA COMPRA COMPRAS COM CARTAO DEBITO CREDITO PAGAMENTO PAGTO PGTO ' +
-    'BOLETO TRANSFERENCIA TRANSF TED DOC TEV PARC PARCELA LTDA EIRELI BRA BELO HORIZONTE SAO PAULO ' +
-    'RIO JANEIRO PAG MERCADOPAGO IFD LOJA PARA DAS DOS COBRANCA REFERENTE AUTOMATICO'
-  ).split(' '));
-
-  function tokenizar(desc) {
-    return norm(desc)
-      .replace(/\*/g, ' ')
-      .split(' ')
-      .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP_TOKENS.has(t));
-  }
+  // O aprendizado (palavras, pistas, modelo) fica em classificador.js, para poder ser medido à parte.
+  const tokenizar = desc => BolsoIA.tokens(desc);
 
   // Origem da categoria de um lançamento: 'usuario' (ela escolheu), 'regra' (regra dela ou embutida),
   // 'auto' (transferência conciliada pelo app) ou 'antigo' (veio de versão anterior, origem desconhecida).
   const ORIGENS_CONFIAVEIS = new Set(['usuario', 'regra']);
 
+  /** Treina com o que ela classificou (ou veio de regra); as sugestões nunca treinam a si mesmas. */
   function treinarIA() {
-    const vocab = {};
-    const catCounts = {};
-    let totalDocs = 0;
-
-    for (const tx of state.lancamentos) {
-      if (!tx.catId || tx.catId === 'transf' || !ORIGENS_CONFIAVEIS.has(tx.catOrigem)) continue;
-      const key = tx.subId ? `${tx.catId}:${tx.subId}` : tx.catId;
-      const tokens = tokenizar(tx.desc);
-      if (!tokens.length) continue;
-      totalDocs++;
-      catCounts[key] = (catCounts[key] || 0) + 1;
-      for (const tk of tokens) {
-        if (!vocab[tk]) vocab[tk] = {};
-        vocab[tk][key] = (vocab[tk][key] || 0) + 1;
-      }
-    }
-    state.ia = { vocab, catCounts, totalDocs };
+    const exemplos = state.lancamentos
+      .filter(tx => tx.catId && tx.catId !== 'transf' && ORIGENS_CONFIAVEIS.has(tx.catOrigem))
+      .map(tx => ({
+        desc: tx.desc, valor: tx.valor, cartao: ehCartao(tx.contaId),
+        catId: tx.catId, key: tx.subId ? `${tx.catId}:${tx.subId}` : tx.catId
+      }));
+    state.iaEx = exemplos;
+    state.ia = BolsoIA.treinar(exemplos);
   }
 
   function pareceMesmaTitularidade(descNorm) {
@@ -532,31 +513,15 @@
   }
 
   /** Sugestão para a triagem: a regra, se houver; senão o palpite do aprendizado (nunca gravado sozinho). */
-  function classificar(desc, valor) {
+  function classificar(desc, valor, contaId = '') {
     const porRegra = classificarPorRegra(desc, valor);
-    if (porRegra || state.ia.totalDocs < 3) return porRegra;
-    const tokens = tokenizar(desc);
-    if (!tokens.length) return null;
-    const vocabSize = Object.keys(state.ia.vocab).length || 1;
-    let melhorKey = null;
-    let melhorScore = -Infinity;
-    for (const [key, docCount] of Object.entries(state.ia.catCounts)) {
-      const catObj = getCat(key.split(':')[0]);
-      if (!catObj || !tipoCombina(catObj, valor)) continue;
-      let score = Math.log(docCount / state.ia.totalDocs);
-      let hits = 0;
-      for (const tk of tokens) {
-        const n = (state.ia.vocab[tk] && state.ia.vocab[tk][key]) || 0;
-        if (n > 0) hits++;
-        score += Math.log((n + 0.5) / (docCount + 0.5 * vocabSize));
-      }
-      if (hits > 0 && score > melhorScore) {
-        melhorScore = score;
-        melhorKey = key;
-      }
-    }
-    if (!melhorKey) return null;
-    const [catId, subId = ''] = melhorKey.split(':');
+    if (porRegra) return porRegra;
+    const p = BolsoIA.prever(state.ia, { desc, valor, cartao: ehCartao(contaId) }, key => {
+      const c = getCat(key.split(':')[0]);
+      return Boolean(c) && tipoCombina(c, valor);
+    });
+    if (!p) return null;
+    const [catId, subId = ''] = p.key.split(':');
     return { catId, subId, origem: 'ia' };
   }
 
@@ -1318,19 +1283,22 @@
     fConta.value = valConta;
   }
 
-  /** Até 3 botões: a sugestão (✦) e as categorias que ela mais usa para esse tipo de lançamento. */
-  function sugerirChipsTriagem(tx, usoPorSinal) {
+  /** Até 3 botões: a sugestão (✦) e as categorias mais usadas em lançamentos do mesmo tipo e valor. */
+  function sugerirChipsTriagem(tx) {
     const chips = [];
     const add = (catId, subId, label, cls) => {
       if (!chips.some(c => c.catId === catId && c.subId === subId)) chips.push({ catId, subId, label, cls });
     };
-    const sug = classificar(tx.desc, tx.valor);
+    const sug = classificar(tx.desc, tx.valor, tx.contaId);
     if (sug) add(sug.catId, sug.subId || '', `✦ ${labelCat(sug.catId, sug.subId)}`, 'qchip qchip-ia');
-    const uso = usoPorSinal[tx.valor > 0 ? 1 : -1];
-    state.categorias
-      .filter(c => c.tipo !== 'mov' && tipoCombina(c, tx.valor) && (c.id !== 'pix' || / PIX /.test(textoBusca(tx.desc))))
-      .sort((a, b) => (uso[b.id] || 0) - (uso[a.id] || 0))
-      .forEach(c => { if (chips.length < 3) add(c.id, '', c.nome, 'qchip'); });
+    const serve = cid => {
+      const c = getCat(cid);
+      return Boolean(c) && c.tipo !== 'mov' && tipoCombina(c, tx.valor) && (c.id !== 'pix' || / PIX /.test(textoBusca(tx.desc)));
+    };
+    const ordem = BolsoIA.botoes(state.iaEx || [], { desc: tx.desc, valor: tx.valor, cartao: ehCartao(tx.contaId) }, serve);
+    // sem histórico ainda: as categorias na ordem da lista
+    for (const c of state.categorias) if (!ordem.includes(c.id) && serve(c.id)) ordem.push(c.id);
+    for (const cid of ordem) { if (chips.length >= 3) break; add(cid, '', getCat(cid).nome, 'qchip'); }
     return chips;
   }
 
@@ -1392,13 +1360,6 @@
     }
 
     const hoje = hojeStr();
-    const usoPorSinal = { 1: {}, '-1': {} };
-    for (const t of state.lancamentos) {
-      if (t.catId && ORIGENS_CONFIAVEIS.has(t.catOrigem)) {
-        const u = usoPorSinal[t.valor > 0 ? 1 : -1];
-        u[t.catId] = (u[t.catId] || 0) + 1;
-      }
-    }
     const coresLanc = coresCategorias(mesesDoPainel());
     ul.innerHTML = visiveis.map(tx => {
       const dia = tx.data ? tx.data.slice(8, 10) : '--';
@@ -1416,7 +1377,7 @@
 
       let chipsHtml = '';
       if (!cat) {
-        const chips = sugerirChipsTriagem(tx, usoPorSinal);
+        const chips = sugerirChipsTriagem(tx);
         chipsHtml = `
           <div class="qcats">
             ${chips.map(ch => `<button type="button" class="${ch.cls}" data-qcat="${esc(ch.catId)}" data-qsub="${esc(ch.subId)}">${esc(ch.label)}</button>`).join('')}
@@ -2063,9 +2024,8 @@
     $('#rCat').innerHTML = state.categorias.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('');
     atualizarSelectSubRegra();
 
-    const vocabCount = Object.keys(state.ia.vocab).length;
-    $('#iaStatus').textContent = state.ia.totalDocs >= 3
-      ? `Aprendizado ativo: ${state.ia.totalDocs} lançamentos analisados (${vocabCount} palavras-chave).`
+    $('#iaStatus').textContent = state.ia.total >= 3
+      ? `Aprendizado ativo: ${state.ia.total} lançamentos analisados (${state.ia.tamanho} pistas).`
       : `Classifique pelo menos 3 lançamentos para ativar as sugestões inteligentes.`;
 
     $('#regrasPadraoT').textContent = `Ver ${REGRAS_PADRAO.length} regras automáticas embutidas`;
@@ -2142,8 +2102,7 @@
 
   /** Texto sugerido para a regra: as duas primeiras palavras que dizem algo ("ASSOCIACAO VEREDAS"). */
   function sugerirTextoRegra(desc) {
-    const tokens = tokenizar(desc);
-    return tokens.length ? tokens.slice(0, 2).join(' ') : norm(desc).slice(0, 24);
+    return BolsoIA.textoRegra(desc, 2);
   }
 
   /** Lançamentos já no app que a regra pegaria (mesmo sentido; nunca os que ela classificou à mão). */

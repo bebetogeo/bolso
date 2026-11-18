@@ -1,39 +1,48 @@
-// Bolso — service worker: guarda o app no aparelho para abrir sem internet.
-// Busca sempre a versão mais recente quando há internet (atualizando a cópia salva)
-// e usa a cópia guardada no aparelho quando estiver offline.
-const CACHE = 'bolso-v1.6.0';
-const ARQUIVOS = ['./', './index.html', './app.css', './app.js', './manifest.webmanifest', './icons/mask.svg'];
+const CACHE = 'bolso-v1.6.1';
+const ATIVOS = [
+  './',
+  './index.html',
+  './app.css',
+  './app.js',
+  './manifest.webmanifest',
+  './icons/mask.svg'
+];
 
-self.addEventListener('install', e => {
-  e.waitUntil(
+self.addEventListener('install', event => {
+  event.waitUntil(
     caches.open(CACHE)
-      .then(c => Promise.allSettled(ARQUIVOS.map(u => c.add(u))))
+      .then(cache => cache.addAll(ATIVOS))
       .then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
+self.addEventListener('activate', event => {
+  event.waitUntil(
     caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(
+        keys.filter(key => key !== CACHE).map(key => caches.delete(key))
+      ))
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  const url = new URL(e.request.url);
-  if (url.origin !== location.origin) return;
+self.addEventListener('fetch', event => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
 
-  e.respondWith(
-    fetch(e.request)
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Rede primeiro para sempre pegar atualizações; cai no cache se estiver offline
+  event.respondWith(
+    fetch(req)
       .then(res => {
-        if (res.ok) {
+        if (res && res.status === 200) {
           const copia = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copia));
+          caches.open(CACHE).then(cache => cache.put(req, copia));
         }
         return res;
       })
-      .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+      .catch(() => caches.match(req).then(cached => cached || caches.match('./index.html')))
   );
 });

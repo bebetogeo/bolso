@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.1.3';
+  const VERSAO = '2.1.4';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1154,49 +1154,54 @@
     `;
   }
 
-  function renderOrcamentoCard(res, ehMesAtual) {
-    const catsOrc = Object.entries(state.orcamentos).filter(([, v]) => Number(v) > 0);
-    const bar = $('#orcFill');
-    const hojeEl = $('#orcHoje');
-    const txt = $('#orcTxt');
-
-    $('#cardOrc').hidden = !catsOrc.length;
-    if (!catsOrc.length) {
-      bar.style.width = '0%';
-      bar.className = 'orc-fill';
-      hojeEl.hidden = true;
-      txt.innerHTML = `Você ainda não definiu limites mensais. <button type="button" class="lnk" data-go="orcamento">Definir orçamento</button>`;
-      const b = $('button[data-go="orcamento"]', txt);
-      if (b) b.onclick = () => irPara('orcamento');
-      return;
+  /**
+   * Resumo do orçamento do mês: total usado, comparado com quanto do mês já passou, e o que importa
+   * separado (quanto passou nas categorias estouradas e quanto ainda dá para gastar nas outras),
+   * em vez de um "restam" líquido que esconde as categorias que estouraram.
+   */
+  function resumoOrcamentoHtml(res, comLink) {
+    const lims = Object.entries(state.orcamentos).filter(([cid, v]) => Number(v) > 0 && getCat(cid));
+    if (!lims.length) return '';
+    const total = lims.reduce((a, [, v]) => a + Number(v), 0);
+    const usado = lims.reduce((a, [cid]) => a + (res.porCat[cid] || 0), 0);
+    const estouradas = lims.filter(([cid, v]) => (res.porCat[cid] || 0) > Number(v));
+    const passou = estouradas.reduce((a, [cid, v]) => a + (res.porCat[cid] || 0) - Number(v), 0);
+    const sobra = lims.reduce((a, [cid, v]) => a + Math.max(0, Number(v) - (res.porCat[cid] || 0)), 0);
+    const pct = Math.round((usado / total) * 100);
+    let pctMes = null;
+    if (state.mes === mesAtualStr()) {
+      const hoje = new Date();
+      pctMes = Math.round((hoje.getDate() / new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()) * 100);
+    } else if (state.mes < mesAtualStr()) {
+      pctMes = 100;
     }
-
-    const totalOrc = catsOrc.reduce((acc, [, v]) => acc + Number(v), 0);
-    const gastoOrc = catsOrc.reduce((acc, [cid]) => acc + (res.porCat[cid] || 0), 0);
-    const pct = totalOrc > 0 ? Math.round((gastoOrc / totalOrc) * 100) : 0;
-
-    bar.style.width = `${Math.min(100, pct)}%`;
-    bar.className = 'orc-fill' + (pct > 100 ? ' estourou' : pct >= 85 ? ' alto' : '');
-
-    if (ehMesAtual) {
-      const now = new Date();
-      const diasMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      const pctDia = Math.min(98, Math.max(2, Math.round((now.getDate() / diasMes) * 100)));
-      hojeEl.hidden = false;
-      hojeEl.style.left = `${pctDia}%`;
-    } else {
-      hojeEl.hidden = true;
-    }
-
-    const restante = round2(totalOrc - gastoOrc);
-    if (restante >= 0) {
-      txt.innerHTML = `Você usou <b class="num">${moed(gastoOrc)}</b> de <b class="num">${moed(totalOrc)}</b> (${pct}%). Ainda restam <b class="num pos">${moed(restante)}</b> nas categorias com limite.`;
-    } else {
-      txt.innerHTML = `Você usou <b class="num">${moed(gastoOrc)}</b> de <b class="num">${moed(totalOrc)}</b> (${pct}%), passando <b class="num neg">${moed(Math.abs(restante))}</b> do planejado.`;
-    }
+    const cor = pct > 100 ? 'var(--estourou)' : pctMes !== null && pct > pctMes + 10 ? 'var(--c2)' : 'var(--pri)';
+    const ritmo = pct > 100 ? 'passou do orçamento'
+      : pctMes === null || pctMes >= 100 ? `${pct}% usado`
+        : `${pct}% usado · ${pctMes}% do mês passou${pct > pctMes + 10 ? ' · gastando mais rápido que o mês' : ''}`;
+    return `
+      <div class="cd-top"><span class="cd-tt">Orçamento de ${esc(mesNome(state.mes).toLowerCase())}</span>${comLink ? '<button type="button" class="lnk" data-go="orcamento">Ajustar</button>' : ''}</div>
+      <p class="orc-big num">${moed(usado, true)} <span>de ${moed(total, true)}</span></p>
+      <div class="orc-trilho">
+        <div class="trk"><i style="width:${Math.min(100, pct)}%;background:${cor}"></i></div>
+        ${pctMes !== null && pctMes < 100 ? `<span class="orc-hoje2" style="left:${pctMes}%"><i></i><small>hoje</small></span>` : ''}
+      </div>
+      <p class="cd-lb">${ritmo}</p>
+      <div class="orc-pills">
+        ${estouradas.length ? `<span class="pl pl-s num">${estouradas.length} ${estouradas.length === 1 ? 'categoria passou' : 'categorias passaram'} do limite: +${moed(passou, true)}</span>` : ''}
+        ${sobra > 0 ? `<span class="pl pl-e num">Ainda dá para gastar ${moed(sobra, true)} ${estouradas.length ? 'nas outras' : ''}</span>` : ''}
+      </div>`;
   }
 
-  /** Para onde foi: barra única colorida e lista por categoria; tocar abre as subcategorias. */
+  function renderOrcamentoCard(res) {
+    const el = $('#cardOrc');
+    const html = resumoOrcamentoHtml(res, true);
+    el.hidden = !html;
+    el.innerHTML = html;
+    const b = $('button[data-go="orcamento"]', el);
+    if (b) b.onclick = () => irPara('orcamento');
+  }
+
   function renderCategoriasCard(res, cores) {
     const el = $('#cardCats');
     const itens = Object.entries(res.porCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
@@ -1977,28 +1982,12 @@
   }
 
   /** Topo do Orçamento: quanto do total já foi usado, comparado com quanto do mês já passou. */
+  /** Topo da tela de Orçamento: o mesmo resumo do painel, ou um convite quando ainda não há limites. */
   function renderOrcResumo(res) {
     const el = $('#orcResumo');
-    const lims = Object.entries(state.orcamentos).filter(([cid, v]) => Number(v) > 0 && getCat(cid));
-    if (!lims.length) {
-      el.innerHTML = `<p class="cd-tt">Orçamento de ${esc(mesNome(state.mes).toLowerCase())}</p>
-        <p class="cd-lb">Defina limites nas categorias abaixo (ou toque em "usar" para começar pela média) e o Bolso mostra aqui quanto já foi usado.</p>`;
-      return;
-    }
-    const total = lims.reduce((a, [, v]) => a + Number(v), 0);
-    const usado = lims.reduce((a, [cid]) => a + (res.porCat[cid] || 0), 0);
-    const pct = Math.round((usado / total) * 100);
-    let ritmo = '';
-    if (state.mes === mesAtualStr()) {
-      const hoje = new Date();
-      const diasMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
-      ritmo = ` · ${Math.round((hoje.getDate() / diasMes) * 100)}% do mês já passou`;
-    }
-    el.innerHTML = `
-      <p class="cd-lb">Orçamento de ${esc(mesNome(state.mes).toLowerCase())}</p>
-      <p class="orc-big num">${moed(usado, true)} <span>de ${moed(total, true)}</span></p>
-      <div class="trk"><i style="width:${Math.min(100, pct)}%;background:${pct > 100 ? 'var(--neg)' : 'var(--pri)'}"></i></div>
-      <p class="cd-lb">${pct}% usado${ritmo}</p>`;
+    el.innerHTML = resumoOrcamentoHtml(res, false) || `
+      <p class="cd-tt">Orçamento de ${esc(mesNome(state.mes).toLowerCase())}</p>
+      <p class="cd-lb">Defina limites nas categorias abaixo (ou toque em "usar" para começar pela média) e o Bolso mostra aqui quanto já foi usado.</p>`;
   }
 
   function atualizarSelectSubRegra() {

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.7.2';
+  const VERSAO = '1.7.3';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -71,11 +71,25 @@
     { texto: 'PAGAMENTO FATURA', catId: 'transf', subId: '' },
     { texto: 'PAGTO FATURA', catId: 'transf', subId: '' },
     { texto: 'PAGAMENTO DE CARTAO', catId: 'transf', subId: '' },
+    { texto: 'PAGAMENTO CARTAO', catId: 'transf', subId: '' },
+    { texto: 'DEBITO AUTOMATICO CARTAO', catId: 'transf', subId: '' },
+    { texto: 'DEBITO CARTAO', catId: 'transf', subId: '' },
+    { texto: 'FATURA CARTAO', catId: 'transf', subId: '' },
+    { texto: 'FATURA XP', catId: 'transf', subId: '' },
+    { texto: 'OUROCARD', catId: 'transf', subId: '' },
     { texto: 'PIX-ENVIO DEVOLVIDO', catId: 'transf', subId: '' },
     { texto: 'PIX - REJEITADO', catId: 'transf', subId: '' },
+    { texto: 'DEVOLUCAO PIX', catId: 'transf', subId: '' },
+    { texto: 'ESTORNO', catId: 'transf', subId: '' },
+    { texto: 'BB RENDE FACIL', catId: 'transf', subId: '' },
+    { texto: 'RENDE FACIL', catId: 'transf', subId: '' },
     { texto: 'RESGATE', catId: 'transf', subId: '' },
     { texto: 'APLICACAO', catId: 'transf', subId: '' },
+    { texto: 'APLIC.INVEST', catId: 'transf', subId: '' },
+    { texto: 'RESG.INVEST', catId: 'transf', subId: '' },
     { texto: 'RENDIMENTO AUTOMATICO', catId: 'rendimentos', subId: '' },
+    { texto: 'JUROS SOBRE CAPITAL', catId: 'rendimentos', subId: '' },
+    { texto: 'DIVIDENDO', catId: 'rendimentos', subId: '' },
     { texto: 'SALARIO', catId: 'salario', subId: '' },
     { texto: 'PRO LABORE', catId: 'salario', subId: '' }
   ];
@@ -376,17 +390,35 @@
     state.fixasOcultas = fixasOcultas || [];
     state.lancamentos = lancs || [];
 
+    treinarIA();
+
+    let lancsModificados = false;
+    for (const tx of state.lancamentos) {
+      if (!tx.catId) {
+        const sug = classificar(tx.desc, tx.valor);
+        if (sug && (sug.origem === 'regra' || sug.origem === 'padrao' || sug.origem === 'titular')) {
+          tx.catId = sug.catId;
+          tx.subId = sug.subId || '';
+          lancsModificados = true;
+        }
+      }
+    }
+
+    const paresConciliados = conciliarTransferencias();
+    if (lancsModificados || paresConciliados > 0) {
+      await dbPutLanc(state.lancamentos);
+      treinarIA();
+    }
+
     let contasAtualizadas = false;
     for (const c of state.contas) {
       if (recalcularSaldoInicialPorExtrato(c)) contasAtualizadas = true;
     }
     if (contasAtualizadas) await kvSet('contas', state.contas);
-
-    treinarIA();
   }
 
   /* ========================================================================
-     Inteligência Local (Regras + Naive Bayes)
+     Inteligência Local (Regras + Titularidade + Naive Bayes)
      ======================================================================== */
   const STOP_TOKENS = new Set([
     'PIX', 'ENVIADO', 'RECEBIDO', 'COMPRA', 'CARTAO', 'DEBITO', 'CREDITO',
@@ -421,6 +453,18 @@
     state.ia = { vocab, catCounts, totalDocs };
   }
 
+  function pareceMesmaTitularidade(descNorm) {
+    if (!/(PIX|TED|DOC|TRANSF|ENVIO|RECEB)/.test(descNorm)) return false;
+    for (const c of state.contas) {
+      if (!c.titular) continue;
+      const partes = norm(c.titular).split(' ').filter(p => p.length >= 4);
+      if (partes.length >= 2 && partes.slice(0, 2).every(p => descNorm.includes(p))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function classificar(desc, valor) {
     const n = norm(desc);
     // 1. Regras do usuário
@@ -429,7 +473,11 @@
         return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
       }
     }
-    // 2. Regras padrão
+    // 2. Transferência para mesma titularidade detectada pelo titular da conta
+    if (pareceMesmaTitularidade(n) && state.categorias.some(c => c.id === 'transf')) {
+      return { catId: 'transf', subId: '', origem: 'titular' };
+    }
+    // 3. Regras padrão
     for (const r of REGRAS_PADRAO) {
       if (n.includes(r.texto)) {
         const existe = state.categorias.find(c => c.id === r.catId);
@@ -439,7 +487,7 @@
         }
       }
     }
-    // 3. Naive Bayes treinado com escolhas anteriores
+    // 4. Naive Bayes treinado com escolhas anteriores
     if (state.ia.totalDocs >= 3) {
       const tokens = tokenizar(desc);
       if (tokens.length) {
@@ -617,6 +665,13 @@
 
       const vals = mesesPresentes.map(m => Math.abs(g.itens[m].valor));
       const media = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const minV = Math.min(...vals);
+      const maxV = Math.max(...vals);
+      // Exige valores consistentes entre meses (evita compras avulsas no mesmo comércio)
+      if (media > 0 && (maxV - minV) / media > 0.45 && g.catId !== 'moradia' && g.catId !== 'assinaturas') {
+        continue;
+      }
+
       const atualTx = g.itens[ym] || null;
       const refTx = atualTx || g.itens[mesesPresentes[mesesPresentes.length - 1]];
       const valorAtual = atualTx ? Math.abs(atualTx.valor) : round2(media);
@@ -697,18 +752,17 @@
   }
 
   function conciliarTransferencias() {
+    if (!state.categorias.some(c => c.id === 'transf')) return 0;
     let pares = 0;
     const usadas = new Set();
 
+    // 1. Pareamento exato de saída em uma conta com entrada de mesmo valor em outra conta (até 5 dias)
     for (const a of state.lancamentos) {
       if (a.valor >= 0 || usadas.has(a.id)) continue;
-      const nA = norm(a.desc);
-      if (!/FATURA|CARTAO|TRANSF|TED|DOC|PIX/.test(nA)) continue;
-
       const tA = Date.parse(a.data + 'T12:00:00Z');
       if (!Number.isFinite(tA)) continue;
 
-      const match = state.lancamentos.find(b => {
+      const candidatos = state.lancamentos.filter(b => {
         if (b.id === a.id || usadas.has(b.id)) return false;
         if (b.contaId === a.contaId || b.valor <= 0) return false;
         if (Math.abs(Math.abs(a.valor) - b.valor) > 0.02) return false;
@@ -716,9 +770,18 @@
         return Number.isFinite(tB) && Math.abs(tA - tB) <= 5 * 86400000;
       });
 
-      if (match) {
-        usadas.add(a.id);
-        usadas.add(match.id);
+      if (!candidatos.length) continue;
+
+      candidatos.sort((x, y) => {
+        const dx = Math.abs(Date.parse(x.data + 'T12:00:00Z') - tA);
+        const dy = Math.abs(Date.parse(y.data + 'T12:00:00Z') - tA);
+        return dx - dy;
+      });
+
+      const match = candidatos[0];
+      usadas.add(a.id);
+      usadas.add(match.id);
+      if (a.catId !== 'transf' || match.catId !== 'transf') {
         a.catId = 'transf';
         a.subId = '';
         match.catId = 'transf';
@@ -726,6 +789,43 @@
         pares++;
       }
     }
+
+    // 2. Pareamento de pagamento de fatura na conta corrente com o total mensal de um cartão de crédito
+    const cartoes = state.contas.filter(c => c.tipo === 'cartao');
+    for (const cc of cartoes) {
+      const porMes = new Map();
+      for (const tx of state.lancamentos) {
+        if (tx.contaId !== cc.id || tx.valor >= 0) continue;
+        const c = getCat(tx.catId);
+        if (c && c.tipo === 'mov') continue;
+        const ym = (tx.data || '').slice(0, 7);
+        if (!ym) continue;
+        porMes.set(ym, round2((porMes.get(ym) || 0) + Math.abs(tx.valor)));
+      }
+
+      for (const [ym, totalFatura] of porMes.entries()) {
+        if (totalFatura < 10) continue;
+        const mesesBusca = [ym, addMes(ym, 1)];
+        const pgto = state.lancamentos.find(tx => {
+          if (usadas.has(tx.id) || tx.valor >= 0) return false;
+          const ct = getConta(tx.contaId);
+          if (!ct || ct.tipo === 'cartao') return false;
+          if (!mesesBusca.includes((tx.data || '').slice(0, 7))) return false;
+          if (Math.abs(Math.abs(tx.valor) - totalFatura) > 0.05) return false;
+          return /FATURA|CARTAO|OUROCARD|PAGAMENTO|DEBITO|CREDITO|XP|NUBANK|ITAU|BRADESCO|SANTANDER|INTER|BTG/.test(norm(tx.desc));
+        });
+
+        if (pgto) {
+          usadas.add(pgto.id);
+          if (pgto.catId !== 'transf') {
+            pgto.catId = 'transf';
+            pgto.subId = '';
+            pares++;
+          }
+        }
+      }
+    }
+
     return pares;
   }
 
@@ -876,7 +976,11 @@
       const ehCartao = c.tipo === 'cartao';
       if (ehCartao) {
         const gastoMes = state.lancamentos
-          .filter(tx => tx.contaId === c.id && (tx.data || '').startsWith(state.mes) && tx.valor < 0)
+          .filter(tx => {
+            if (tx.contaId !== c.id || !(tx.data || '').startsWith(state.mes) || tx.valor >= 0) return false;
+            const cat = getCat(tx.catId);
+            return !cat || cat.tipo !== 'mov';
+          })
           .reduce((acc, tx) => acc + Math.abs(tx.valor), 0);
         const fecha = c.fechaDia ? ` · fecha dia ${c.fechaDia}` : '';
         return `
@@ -1310,7 +1414,11 @@
       if (vistos.has(c.id)) continue;
       vistos.add(c.id);
       chips.push({ label: c.nome, catId: c.id, subId: '', cls: 'qchip' });
-      if (chips.length >= 4) break;
+      if (chips.length >= 3) break;
+    }
+
+    if (state.categorias.some(c => c.id === 'transf')) {
+      chips.push({ label: 'Transf. / Fatura', catId: 'transf', subId: '', cls: 'qchip qchip-out' });
     }
     return chips;
   }
@@ -1345,8 +1453,12 @@
       })
       .sort((a, b) => (b.data || '').localeCompare(a.data || '') || String(b.id).localeCompare(String(a.id)));
 
-    const totEnt = filtrados.filter(x => x.valor > 0).reduce((a, b) => a + valorLiquidoEntrada(b), 0);
-    const totSai = filtrados.filter(x => x.valor < 0).reduce((a, b) => a + valorLiquidoGasto(b), 0);
+    const totEnt = filtrados
+      .filter(x => x.valor > 0 && getCat(x.catId)?.tipo !== 'mov')
+      .reduce((a, b) => a + valorLiquidoEntrada(b), 0);
+    const totSai = filtrados
+      .filter(x => x.valor < 0 && getCat(x.catId)?.tipo !== 'mov')
+      .reduce((a, b) => a + valorLiquidoGasto(b), 0);
     $('#lancResumo').textContent = `${filtrados.length} ${filtrados.length === 1 ? 'lançamento' : 'lançamentos'} · +${moed(totEnt, true)} / -${moed(totSai, true)}`;
 
     const temSemCat = filtrados.some(x => !x.catId);
@@ -1765,7 +1877,9 @@
 
     state.lancamentos.push(...novos);
     const paresTransf = conciliarTransferencias();
-    recalcularSaldoInicialPorExtrato(conta);
+    for (const c of state.contas) {
+      recalcularSaldoInicialPorExtrato(c);
+    }
 
     await kvSet('contas', state.contas);
     await dbPutLanc(state.lancamentos);
@@ -1798,7 +1912,7 @@
         <b>${res.novos}</b> ${res.novos === 1 ? 'lançamento importado' : 'lançamentos importados'}
         ${res.duplicados ? ` · ${res.duplicados} repetidos ignorados` : ''}
         ${res.autoClassificados ? ` · ${res.autoClassificados} classificados sozinhos` : ''}
-        ${res.paresTransf ? ` · ${res.paresTransf} pagamento(s) de fatura conciliado(s)` : ''}
+        ${res.paresTransf ? ` · ${res.paresTransf} transferência(s)/fatura(s) conciliada(s)` : ''}
       `;
     }
     box.prepend(div);
@@ -2317,6 +2431,9 @@
       },
       html: `
         <label>Nome<input id="ctNome" maxlength="40" required value="${esc(conta.nome)}"></label>
+        <label>Titular da conta (opcional, ajuda a detectar Pix entre suas contas)
+          <input id="ctTitular" maxlength="60" placeholder="Ex.: Antonio Roberto" value="${esc(conta.titular || '')}">
+        </label>
         <label>Tipo
           <select id="ctTipo">
             <option value="corrente" ${conta.tipo === 'corrente' ? 'selected' : ''}>Conta corrente</option>
@@ -2347,6 +2464,7 @@
         const nome = $('#ctNome').value.trim();
         if (!nome) return false;
         conta.nome = nome;
+        conta.titular = $('#ctTitular').value.trim();
         conta.tipo = $('#ctTipo').value;
         if (conta.tipo === 'cartao') {
           conta.fechaDia = Math.min(31, Math.max(1, Number($('#ctFecha').value) || 20));
@@ -2362,6 +2480,15 @@
             }
             conta.saldoInicial = novoSaldo;
           }
+        }
+        if (conta.titular) {
+          for (const tx of state.lancamentos) {
+            if (!tx.catId && pareceMesmaTitularidade(norm(tx.desc))) {
+              tx.catId = 'transf';
+              tx.subId = '';
+            }
+          }
+          await dbPutLanc(state.lancamentos);
         }
         await kvSet('contas', state.contas);
         toast('Conta atualizada');
@@ -2496,6 +2623,7 @@
       state.fixasOcultas = data.fixasOcultas || [];
       state.lancamentos = data.lancamentos;
 
+      conciliarTransferencias();
       for (const c of state.contas) {
         recalcularSaldoInicialPorExtrato(c);
       }

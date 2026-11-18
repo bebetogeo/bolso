@@ -1,6 +1,6 @@
 'use strict';
 /* Bolso — controle financeiro pessoal. Tudo roda e fica guardado neste aparelho (IndexedDB). */
-const VERSAO = '1.4.2';
+const VERSAO = '1.6.0';
 
 // ───────────────────────── utilidades ─────────────────────────
 const $ = (s, r = document) => r.querySelector(s);
@@ -25,6 +25,28 @@ const mesCurto = m => new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleDa
 const difDias = (a, b) => Math.round((new Date(a + 'T12:00') - new Date(b + 'T12:00')) / 864e5);
 const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+/** Máscara visual para descrições longas de extrato na lista (preserva t.desc original). */
+function formatarDescLista(desc) {
+  let s = String(desc ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return 'Sem descrição';
+  const regrasMascara = [
+    [/^Compra\s+com\s+Cart[ãa]o(?:\s+de\s+(?:Cr[ée]dito|D[ée]bito))?\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Cartão · '],
+    [/^Compra\s+(?:no\s+)?D[ée]bito\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Débito · '],
+    [/^Pix\s*[-–]?\s*Enviado\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Pix → '],
+    [/^Pix\s*[-–]?\s*Recebido\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Pix ← '],
+    [/^Pagamento\s+de\s+Boleto\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Boleto · '],
+    [/^Transfer[êe]ncia\s+(?:enviada|realizada)\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Transf. → '],
+    [/^Transfer[êe]ncia\s+recebida\s*(?:\d{2}\/\d{2}(?:\/\d{2,4})?\s*)?(?:\d{2}:\d{2}(?::\d{2})?\s*)?/i, 'Transf. ← '],
+  ];
+  for (const [re, pref] of regrasMascara) {
+    if (re.test(s)) {
+      const resto = s.replace(re, '').replace(/^\d{2}\/\d{2}(?:\s+\d{2}:\d{2})?\s*/, '').trim();
+      return resto ? pref + resto : pref.replace(/\s*·\s*$/, '');
+    }
+  }
+  return s;
+}
 
 /** Converte texto em centavos. Aceita "1.234,56", "-1234.56", "R$ 45,90", "45,90-", "(45,90)", "45,90 D". */
 function parseValor(s, dec) {
@@ -116,15 +138,22 @@ const DB = {
 };
 
 // ───────────────────────── estado e mês de competência ─────────────────────────
-const S = { tx: [], contas: [], cats: [], regras: [], meta: {}, mes: mesAtual(), histFim: null, view: 'painel', limite: 200, catMap: {}, contaMap: {}, regrasOrd: [] };
+const S = { tx: [], contas: [], cats: [], regras: [], meta: {}, mes: mesAtual(), histFim: null, view: 'painel', limite: 200, catMap: {}, subMap: {}, contaMap: {}, regrasOrd: [] };
 function indexar() {
   S.catMap = Object.fromEntries(S.cats.map(c => [c.id, c]));
+  S.subMap = Object.fromEntries(S.cats.map(c => [c.id, Object.fromEntries((c.subs || []).map(s => [s.id, s]))]));
   S.contaMap = Object.fromEntries(S.contas.map(c => [c.id, c]));
-  const tam = (a, b) => b.texto.length - a.texto.length;
-  S.regrasOrd = [...S.regras.filter(r => !r.padrao).sort(tam), ...S.regras.filter(r => r.padrao).sort(tam)];
+  const ordRegra = (a, b) => (b.texto.length - a.texto.length) || ((b.sub ? 1 : 0) - (a.sub ? 1 : 0));
+  S.regrasOrd = [...S.regras.filter(r => !r.padrao).sort(ordRegra), ...S.regras.filter(r => r.padrao).sort(ordRegra)];
   treinarModelo();
 }
 const temDados = () => S.tx.length > 0;
+function nomeCatSub(catId, subId) {
+  const c = S.catMap[catId];
+  if (!c) return 'Sem categoria';
+  const s = subId ? S.subMap[catId]?.[subId] : null;
+  return s ? `${c.nome} · ${s.nome}` : c.nome;
+}
 
 /** Retorna o mês de competência do lançamento (considera o dia de fechamento nos cartões de crédito). */
 function mesCompetencia(t) {
@@ -138,21 +167,141 @@ function mesCompetencia(t) {
   return m;
 }
 
-// ───────────────────────── categorias, cores e regras padrão ─────────────────────────
-const CATS_PADRAO = [
-  ['moradia', 'Moradia', 'gasto'], ['mercado', 'Mercado', 'gasto'], ['restaurantes', 'Restaurantes e delivery', 'gasto'],
-  ['transporte', 'Transporte', 'gasto'], ['saude', 'Saúde', 'gasto'], ['cuidados', 'Cuidados pessoais', 'gasto'],
-  ['assinaturas', 'Assinaturas', 'gasto'], ['compras', 'Compras', 'gasto'], ['lazer', 'Lazer', 'gasto'],
-  ['educacao', 'Educação', 'gasto'], ['pets', 'Pets', 'gasto'], ['tarifas', 'Tarifas e impostos', 'gasto'],
-  ['pix', 'Pix e transferências', 'gasto'], ['salario', 'Salário', 'receita'], ['entradas', 'Outras entradas', 'receita'],
-  ['fatura', 'Pagamento de fatura', 'mov'], ['transf', 'Transferência entre minhas contas', 'mov'], ['invest', 'Investimentos (aplicação e resgate)', 'mov'],
+/** Calcula saldo aberto de Rateio / Terceiros a receber (considera mês atual e mês anterior). */
+function rateioPendente(mesRef = S.mes) {
+  if (!S.catMap.rateio) return 0;
+  const mesAnt = addMes(mesRef, -1);
+  let saiu = 0, entrou = 0;
+  for (const t of S.tx) {
+    if (t.cat !== 'rateio' || t.projecao) continue;
+    const mc = mesCompetencia(t);
+    if (mc !== mesRef && mc !== mesAnt) continue;
+    if (t.valor < 0) saiu += -t.valor;
+    else if (t.valor > 0) entrou += t.valor;
+  }
+  return Math.max(0, saiu - entrou);
+}
+
+// ───────────────────────── categorias, subcategorias, cores e regras padrão ─────────────────────────
+const SUBS_MORADIA = [
+  { id: 'aluguel', nome: 'Aluguel' },
+  { id: 'condominio', nome: 'Condomínio' },
+  { id: 'iptu', nome: 'IPTU' },
+  { id: 'luz', nome: 'Energia elétrica' },
+  { id: 'agua', nome: 'Água' },
+  { id: 'gas', nome: 'Gás' },
+  { id: 'internet', nome: 'Internet / TV' },
+  { id: 'celular', nome: 'Celular' },
+  { id: 'limpeza', nome: 'Limpeza / Diarista' },
+  { id: 'manutencao', nome: 'Manutenção e utensílios' },
 ];
-const CATS_FIXAS = ['pix', 'entradas', 'fatura', 'transf', 'invest'];
+const SUBS_ALIMENTACAO = [
+  { id: 'mercado', nome: 'Mercado' },
+  { id: 'restaurante', nome: 'Restaurante' },
+  { id: 'delivery', nome: 'Delivery' },
+];
+const SUBS_TRANSPORTE = [
+  { id: 'combustivel', nome: 'Combustível' },
+  { id: 'apps', nome: 'Uber / Apps' },
+  { id: 'ipva', nome: 'IPVA' },
+  { id: 'estacionamento', nome: 'Estacionamento' },
+  { id: 'pedagio', nome: 'Pedágio / Sem Parar' },
+  { id: 'manutencao', nome: 'Manutenção' },
+  { id: 'multas', nome: 'Multas / Outros' },
+];
+const SUBS_SAUDE = [
+  { id: 'farmacia', nome: 'Farmácia' },
+  { id: 'consultas', nome: 'Consultas e exames' },
+  { id: 'terapia', nome: 'Terapia / Psicólogo' },
+  { id: 'academia', nome: 'Academia / Personal' },
+  { id: 'pilates', nome: 'Pilates' },
+];
+const SUBS_CUIDADOS = [
+  { id: 'salao', nome: 'Salão e barbearia' },
+  { id: 'cosmeticos', nome: 'Cosméticos e perfumaria' },
+  { id: 'outros', nome: 'Outros' },
+];
+const SUBS_ASSINATURAS = [
+  { id: 'streaming', nome: 'Streaming' },
+  { id: 'software', nome: 'Software e nuvem' },
+];
+const SUBS_COMPRAS = [
+  { id: 'vestuario', nome: 'Vestuário e calçados' },
+  { id: 'presentes', nome: 'Presentes' },
+  { id: 'outros', nome: 'Outros' },
+];
+const SUBS_LAZER = [
+  { id: 'bares', nome: 'Bares e festas' },
+  { id: 'viagens', nome: 'Viagens' },
+  { id: 'eventos', nome: 'Shows / Cinema / Eventos' },
+  { id: 'outros', nome: 'Outros' },
+];
+const SUBS_EDUCACAO = [
+  { id: 'cursos', nome: 'Cursos e mensalidades' },
+  { id: 'livros', nome: 'Livros e material' },
+  { id: 'aulas', nome: 'Aulas' },
+];
+const SUBS_PETS = [
+  { id: 'racao', nome: 'Ração' },
+  { id: 'banho', nome: 'Banho e tosa' },
+  { id: 'vet', nome: 'Veterinário / Remédios / Plano' },
+  { id: 'outros', nome: 'Acessórios e outros' },
+];
+const SUBS_TARIFAS = [
+  { id: 'tarifas', nome: 'Tarifas bancárias / IOF' },
+  { id: 'impostos', nome: 'Impostos' },
+  { id: 'conselhos', nome: 'Conselhos de classe' },
+];
+const SUBS_SEGUROS = [
+  { id: 'vida', nome: 'Seguro de vida' },
+  { id: 'viagem', nome: 'Seguro viagem' },
+  { id: 'auto', nome: 'Seguro auto' },
+  { id: 'residencial', nome: 'Seguro residencial' },
+];
+
+const SUBS_PADRAO_POR_CAT = {
+  moradia: SUBS_MORADIA,
+  alimentacao: SUBS_ALIMENTACAO,
+  transporte: SUBS_TRANSPORTE,
+  saude: SUBS_SAUDE,
+  cuidados: SUBS_CUIDADOS,
+  assinaturas: SUBS_ASSINATURAS,
+  compras: SUBS_COMPRAS,
+  lazer: SUBS_LAZER,
+  educacao: SUBS_EDUCACAO,
+  pets: SUBS_PETS,
+  tarifas: SUBS_TARIFAS,
+  seguros: SUBS_SEGUROS,
+};
+
+const CATS_PADRAO = [
+  ['moradia', 'Moradia', 'gasto', SUBS_MORADIA],
+  ['alimentacao', 'Alimentação', 'gasto', SUBS_ALIMENTACAO],
+  ['transporte', 'Transporte', 'gasto', SUBS_TRANSPORTE],
+  ['saude', 'Saúde', 'gasto', SUBS_SAUDE],
+  ['cuidados', 'Cuidados pessoais', 'gasto', SUBS_CUIDADOS],
+  ['assinaturas', 'Assinaturas', 'gasto', SUBS_ASSINATURAS],
+  ['compras', 'Compras', 'gasto', SUBS_COMPRAS],
+  ['lazer', 'Lazer', 'gasto', SUBS_LAZER],
+  ['educacao', 'Educação', 'gasto', SUBS_EDUCACAO],
+  ['pets', 'Pets', 'gasto', SUBS_PETS],
+  ['tarifas', 'Tarifas e impostos', 'gasto', SUBS_TARIFAS],
+  ['seguros', 'Seguros', 'gasto', SUBS_SEGUROS],
+  ['pix', 'Pix e transferências', 'gasto', []],
+  ['salario', 'Salário', 'receita', []],
+  ['entradas', 'Outras entradas', 'receita', []],
+  ['fatura', 'Pagamento de fatura', 'mov', []],
+  ['transf', 'Transferência entre minhas contas', 'mov', []],
+  ['rateio', 'Rateio / Terceiros', 'mov', []],
+  ['invest', 'Investimentos (aplicação e resgate)', 'mov', []],
+];
+const CATS_FIXAS = ['pix', 'entradas', 'fatura', 'transf', 'rateio', 'invest'];
 const TIPO_NOME = { gasto: 'Gasto', receita: 'Entrada', mov: 'Não conta' };
 const CORES_CAT = {
-  moradia: '#2f8f95', mercado: '#3b9b6e', restaurantes: '#e07a3f', transporte: '#4b7bec',
-  saude: '#d65a7b', cuidados: '#8c6bb1', assinaturas: '#2d9cdb', compras: '#d99b26',
-  lazer: '#e66767', educacao: '#596275', pets: '#789262', tarifas: '#8395a7', pix: '#6c7a89',
+  moradia: '#2f8f95', alimentacao: '#3b9b6e', mercado: '#3b9b6e', restaurantes: '#e07a3f',
+  transporte: '#4b7bec', saude: '#d65a7b', cuidados: '#8c6bb1', assinaturas: '#2d9cdb',
+  compras: '#d99b26', lazer: '#e66767', educacao: '#596275', pets: '#789262',
+  tarifas: '#8395a7', seguros: '#3d7ea6', pix: '#6c7a89',
   __sem: '#c5892f', __outros: '#98aeb0',
 };
 const PALETA_EXTRA = ['#2f8f95', '#e07a3f', '#3b9b6e', '#4b7bec', '#d65a7b', '#8c6bb1', '#d99b26', '#2d9cdb'];
@@ -164,46 +313,101 @@ function corCategoria(id) {
   return PALETA_EXTRA[h % PALETA_EXTRA.length];
 }
 const REGRAS_PADRAO = {
-  moradia: 'ALUGUEL|CONDOMINIO|IMOBILIARIA|QUINTOANDAR|CEMIG|COPASA|ENEL=|CPFL|LIGHT=|SABESP|EQUATORIAL|ENERGISA|NEOENERGIA|COELBA|CELPE|COPEL|CELESC|SANEPAR|CEDAE|CAESB|EMBASA|COMPESA|CORSAN|SANEAGO|COMGAS|GASMIG|ULTRAGAZ|SUPERGASBRAS|LIQUIGAS|VIVO=|CLARO=|TIM=|OI MOVEL|OI FIXO|TELEFONICA|SKY=|INTERNET|ENERGIA ELETRICA|CONTA DE LUZ|CONTA DE AGUA|AGUA E ESGOTO|GAS ENCANADO',
-  mercado: 'SUPERMERC|HIPERMERC|MERCADINHO|MERCEARIA|ATACADAO|ATACAREJO|ASSAI|CARREFOUR|PAO DE ACUCAR|EXTRA HIPER|SUPER NOSSO|VERDEMAR|EPA=|MART MINAS|APOIO MINEIRO|DIA BRASIL|SACOLAO|HORTIFRUTI|ACOUGUE|PADARIA|PANIFICADORA|SAMS CLUB|ZAFFARI|GUANABARA|MUFFATO|ANGELONI|SAVEGNAGO|TENDA ATACADO|GRUPO MATEUS|SUPER BH|BH SUPERM|OBA HORTI|ST MARCHE|MAMBO=',
-  restaurantes: 'IFOOD|IFD=|RAPPI|UBER EATS|UBEREATS|ZE DELIVERY|AIQFOME|RESTAUR|LANCHON|LANCHES|PIZZ|BURGER|HAMBURG|MCDONALD|MC DONALD|BK BRASIL|SUBWAY|HABIB|OUTBACK|STARBUCKS|CAFETERIA|CAFE=|SUSHI|CHURRASC|PASTEL|SORVET|ACAI|DOCERIA|CONFEITARIA|SPOLETO|GIRAFFAS|BOBS=|COCO BAMBU|MADERO|BAR E|BOTECO|CHOPERIA|ESPETO|TEMAKI|CACAU SHOW|KOPENHAGEN',
-  transporte: 'UBER|99APP|99 POP|99POP|99 TECNOLOGIA|99 TAXI|CABIFY|POSTO|AUTO POSTO|IPIRANGA|SHELL|PETROBRAS|COMBUST|ESTACIONAMENTO|ESTAPAR|PARKING|ZONA AZUL|SEM PARAR|CONECTCAR|VELOE|PEDAGIO|METRO=|BILHETE UNICO|BUSER|CLICKBUS|RODOVIARIA|LATAM|GOL LINHAS|AZUL LINHAS|LOCALIZA|MOVIDA|OFICINA|AUTO PECAS|BORRACHARIA|LAVA JATO|TEMBICI',
-  saude: 'FARMAC|DROGA|DROGARIA|DROGASIL|PAGUE MENOS|PANVEL|UNIMED|AMIL=|HAPVIDA|NOTREDAME|SULAMERICA SAUDE|BRADESCO SAUDE|LABORAT|CLINICA|HOSPITAL|ODONTO|DENTIST|HERMES PARDINI|FLEURY|PSICOLOG|FISIOTERAP|CONSULTORIO|MEDIC',
-  cuidados: 'SALAO|CABELEIR|BARBEAR|MANICURE|ESMALTERIA|ESTETIC|DEPIL|ESPACO LASER|BOTICARIO|NATURA=|SEPHORA|QUEM DISSE BERENICE|BELEZA NA WEB|SOBRANCELHA|ACADEMIA|SMARTFIT|SMART FIT|BLUEFIT|BODYTECH|GYMPASS|WELLHUB|TOTALPASS|PILATES|PERFUMARIA',
-  assinaturas: 'NETFLIX|SPOTIFY|AMAZON PRIME|AMAZONPRIME|PRIME VIDEO|DISNEY|HBO|GLOBOPLAY|DEEZER|YOUTUBE|APPLE COM BILL|GOOGLE ONE|GOOGLE STORAGE|ICLOUD|PARAMOUNT|CRUNCHYROLL|MICROSOFT|CHATGPT|OPENAI|CANVA|KINDLE UNLIMITED|AUDIBLE|TELECINE|PREMIERE|MUBI=|TINDER|LINKEDIN',
-  compras: 'AMAZON|MERCADO LIVRE|MERCADOLIVRE|SHOPEE|SHEIN|ALIEXPRESS|MAGALU|MAGAZINE LUIZA|AMERICANAS|CASAS BAHIA|RENNER|RIACHUELO|C A MODAS|CEA=|ZARA=|LEROY|TOK STOK|TOKSTOK|KABUM|CENTAURO|NETSHOES|DECATHLON|HAVAN|MARISA|PERNAMBUCANAS|DAFITI|PONTO FRIO|FAST SHOP|ZATTINI|AREZZO|OTICA|TELHANORTE',
-  lazer: 'CINEMA|CINEMARK|CINEPOLIS|INGRESSO|SYMPLA|EVENTIM|TICKETMASTER|TICKETS FOR FUN|TEATRO|BOOKING|AIRBNB|HOTEL|POUSADA|HOSTEL|DECOLAR|HURB|STEAM|PLAYSTATION|XBOX|NINTENDO|LIVRARIA|PARQUE|MUSEU|BOLICHE',
-  educacao: 'ESCOLA|COLEGIO|FACULDADE|UNIVERSIDADE|CURSO|UDEMY|ALURA|COURSERA|DUOLINGO|HOTMART|CULTURA INGLESA|WIZARD|CCAA=|FISK=|PAPELARIA|KALUNGA|MENSALIDADE ESCOLAR',
-  pets: 'PET SHOP|PETSHOP|PET CENTER|PETZ|PETLOVE|COBASI|VETERIN|AGROPET|BANHO E TOSA|CLINICA VET',
-  tarifas: 'TARIFA|TAR=|ANUIDADE|IOF=|JUROS|MULTA|ENCARGO|CESTA DE SERV|PACOTE DE SERV|PACOTE SERV|MANUTENCAO DE CONTA|MANUT CONTA|IPTU|IPVA|DARF|RECEITA FEDERAL|DETRAN|LICENCIAMENTO|IMPOSTO|IRPF|CARTORIO|SEGURO PRESTAMISTA',
+  'moradia:aluguel': 'ALUGUEL|IMOBILIARIA|QUINTOANDAR',
+  'moradia:condominio': 'CONDOMINIO',
+  'moradia:iptu': 'IPTU=',
+  'moradia:luz': 'CEMIG|ENEL=|CPFL|LIGHT=|EQUATORIAL|ENERGISA|NEOENERGIA|COELBA|CELPE|COPEL|CELESC|ENERGIA ELETRICA|CONTA DE LUZ',
+  'moradia:agua': 'COPASA|SABESP|SANEPAR|CEDAE|CAESB|EMBASA|COMPESA|CORSAN|SANEAGO|CONTA DE AGUA|AGUA E ESGOTO',
+  'moradia:gas': 'COMGAS|GASMIG|ULTRAGAZ|SUPERGASBRAS|LIQUIGAS|GAS ENCANADO',
+  'moradia:internet': 'INTERNET|BANDA LARGA|FIBRA|SKY=|NET VIRTUA',
+  'moradia:celular': 'VIVO=|CLARO=|TIM=|OI MOVEL|OI FIXO|TELEFONICA',
+  'moradia:limpeza': 'DIARISTA|FAXINA|LIMPEZA',
+  'moradia:manutencao': 'LEROY|TELHANORTE|CASA E CONSTRUCAO|FERRAGENS',
+
+  'alimentacao:mercado': 'SUPERMERC|HIPERMERC|MERCADINHO|MERCEARIA|ATACADAO|ATACAREJO|ASSAI|CARREFOUR|PAO DE ACUCAR|EXTRA HIPER|SUPER NOSSO|VERDEMAR|EPA=|MART MINAS|APOIO MINEIRO|DIA BRASIL|SACOLAO|HORTIFRUTI|ACOUGUE|PADARIA|PANIFICADORA|SAMS CLUB|ZAFFARI|GUANABARA|MUFFATO|ANGELONI|SAVEGNAGO|TENDA ATACADO|GRUPO MATEUS|SUPER BH|BH SUPERM|OBA HORTI|ST MARCHE|MAMBO=',
+  'alimentacao:delivery': 'IFOOD|IFD=|RAPPI|UBER EATS|UBEREATS|ZE DELIVERY|AIQFOME|DELIVERY',
+  'alimentacao:restaurante': 'RESTAUR|LANCHON|LANCHES|PIZZ|BURGER|HAMBURG|MCDONALD|MC DONALD|BK BRASIL|SUBWAY|HABIB|OUTBACK|STARBUCKS|CAFETERIA|CAFE=|SUSHI|CHURRASC|PASTEL|SORVET|ACAI|DOCERIA|CONFEITARIA|SPOLETO|GIRAFFAS|BOBS=|COCO BAMBU|MADERO|BAR E|BOTECO|CHOPERIA|ESPETO|TEMAKI|CACAU SHOW|KOPENHAGEN',
+
+  'transporte:combustivel': 'POSTO|AUTO POSTO|IPIRANGA|SHELL|PETROBRAS|COMBUST',
+  'transporte:apps': 'UBER|99APP|99 POP|99POP|99 TECNOLOGIA|99 TAXI|CABIFY|TEMBICI|BUSER|CLICKBUS|RODOVIARIA|METRO=|BILHETE UNICO',
+  'transporte:ipva': 'IPVA|DETRAN|LICENCIAMENTO',
+  'transporte:estacionamento': 'ESTACIONAMENTO|ESTAPAR|PARKING|ZONA AZUL',
+  'transporte:pedagio': 'SEM PARAR|CONECTCAR|VELOE|PEDAGIO',
+  'transporte:manutencao': 'OFICINA|AUTO PECAS|BORRACHARIA|LAVA JATO|LOCALIZA|MOVIDA',
+  'transporte:multas': 'MULTA TRANSITO|INFRACAO',
+
+  'saude:farmacia': 'FARMAC|DROGA|DROGARIA|DROGASIL|PAGUE MENOS|PANVEL',
+  'saude:consultas': 'UNIMED|AMIL=|HAPVIDA|NOTREDAME|SULAMERICA SAUDE|BRADESCO SAUDE|LABORAT|CLINICA|HOSPITAL|ODONTO|DENTIST|HERMES PARDINI|FLEURY|CONSULTORIO|MEDIC',
+  'saude:terapia': 'PSICOLOG|TERAPIA|ACUPUNTURA|FISIOTERAP',
+  'saude:academia': 'ACADEMIA|SMARTFIT|SMART FIT|BLUEFIT|BODYTECH|GYMPASS|WELLHUB|TOTALPASS|PERSONAL',
+  'saude:pilates': 'PILATES',
+
+  'cuidados:salao': 'SALAO|CABELEIR|BARBEAR|MANICURE|ESMALTERIA|ESTETIC|DEPIL|ESPACO LASER|SOBRANCELHA',
+  'cuidados:cosmeticos': 'BOTICARIO|NATURA=|SEPHORA|QUEM DISSE BERENICE|BELEZA NA WEB|PERFUMARIA',
+
+  'assinaturas:streaming': 'NETFLIX|SPOTIFY|AMAZON PRIME|AMAZONPRIME|PRIME VIDEO|DISNEY|HBO|GLOBOPLAY|DEEZER|YOUTUBE|PARAMOUNT|CRUNCHYROLL|KINDLE UNLIMITED|AUDIBLE|TELECINE|PREMIERE|MUBI=|STREAMING',
+  'assinaturas:software': 'APPLE COM BILL|GOOGLE ONE|GOOGLE STORAGE|ICLOUD|MICROSOFT|CHATGPT|OPENAI|CANVA|TINDER|LINKEDIN',
+
+  'compras:vestuario': 'RENNER|RIACHUELO|C A MODAS|CEA=|ZARA=|MARISA|PERNAMBUCANAS|DAFITI|ZATTINI|AREZZO|CENTAURO|NETSHOES|DECATHLON',
+  'compras:presentes': 'PRESENTE|FLORICULTURA|GIULIANA FLORES',
+  compras: 'AMAZON|MERCADO LIVRE|MERCADOLIVRE|SHOPEE|SHEIN|ALIEXPRESS|MAGALU|MAGAZINE LUIZA|AMERICANAS|CASAS BAHIA|TOK STOK|TOKSTOK|KABUM|HAVAN|PONTO FRIO|FAST SHOP|OTICA',
+
+  'lazer:bares': 'BAR=|BOTECO|CHOPERIA|PUB=|BALADA|INGRESSO|SYMPLA|EVENTIM|TICKETMASTER|TICKETS FOR FUN',
+  'lazer:viagens': 'BOOKING|AIRBNB|HOTEL|POUSADA|HOSTEL|DECOLAR|HURB|LATAM|GOL LINHAS|AZUL LINHAS',
+  'lazer:eventos': 'CINEMA|CINEMARK|CINEPOLIS|TEATRO|PARQUE|MUSEU|BOLICHE',
+  lazer: 'STEAM|PLAYSTATION|XBOX|NINTENDO|LIVRARIA',
+
+  'educacao:cursos': 'ESCOLA|COLEGIO|FACULDADE|UNIVERSIDADE|CURSO|UDEMY|ALURA|COURSERA|DUOLINGO|HOTMART|CULTURA INGLESA|WIZARD|CCAA=|FISK=|MENSALIDADE ESCOLAR',
+  'educacao:livros': 'PAPELARIA|KALUNGA|LIVROS',
+
+  'pets:racao': 'RACAO|PETZ|PETLOVE|COBASI|AGROPET',
+  'pets:banho': 'BANHO E TOSA|BANHO TOSA',
+  'pets:vet': 'VETERIN|CLINICA VET',
+  pets: 'PET SHOP|PETSHOP|PET CENTER',
+
+  'tarifas:tarifas': 'TARIFA|TAR=|ANUIDADE|IOF=|JUROS|MULTA|ENCARGO|CESTA DE SERV|PACOTE DE SERV|PACOTE SERV|MANUTENCAO DE CONTA|MANUT CONTA|CARTORIO|SEGURO PRESTAMISTA',
+  'tarifas:impostos': 'DARF|RECEITA FEDERAL|IMPOSTO|IRPF',
+  'tarifas:conselhos': 'CREA=|CRM=|OAB=|CRC=|CAU=',
+
+  'seguros:vida': 'SEGURO DE VIDA|SEGURO VIDA|SEG VIDA|PRUDENTIAL|MAG SEGUROS|MONGERAL|METLIFE|ICATU',
+  'seguros:viagem': 'SEGURO VIAGEM|ASSIST CARD|ASSISTCARD|WORLD NOMADS|GTA ASSIST|UNIVERSAL ASSISTANCE|APRIL CORIS|CORIS',
+  'seguros:auto': 'SEGURO AUTO|PORTO SEGURO|AZUL SEGUROS|TOKIO MARINE|ALLIANZ|LIBERTY SEGUROS|YOUSE|PIER SEGURADORA|HDI SEGUROS|MAPFRE|SURA SEGUROS',
+  'seguros:residencial': 'SEGURO RESIDENCIAL|SEGURO RESID',
+  seguros: 'SEGURADORA|APOLICE|BRADESCO SEGUROS|SULAMERICA SEGUROS|BB SEGUROS|ITAU SEGUROS|CAIXA SEGURADORA|ZURICH|CHUBB',
+
   pix: '-PIX|-TED=|-DOC=|-TEV=|-TRANSF',
   salario: '+SALARIO|+FOLHA DE PAGAMENTO|+PROVENTOS|+REMUNERACAO SALARIO|+CREDITO DE SALARIO|+FERIAS=|+ADIANTAMENTO SALARIAL|+BENEFICIO INSS|+INSS=',
   entradas: '+PIX|+TED=|+DOC=|+TEV=|+TRANSF|+ESTORNO|+REEMBOLSO|+CASHBACK|+RENDIMENTO|+DEPOSITO|+DEP DINHEIRO|+RESTITUICAO',
   fatura: 'PAGAMENTO FATURA|PAGAMENTO DE FATURA|PAGTO FATURA|PGTO FATURA|PAG FATURA|FATURA CARTAO|FATURA DE CARTAO|PAGAMENTO CARTAO|PAGTO CARTAO|PGTO CARTAO|CARTAO DE CREDITO|CARTAO CREDITO|GASTOS CARTAO|PAGAMENTO RECEBIDO|PAGAMENTO EFETUADO|CARTAO VISA|CARTAO MASTER|CARTAO ELO|OUROCARD|SICOOBCARD|FATURA=',
   transf: 'ENTRE CONTAS|MESMA TITULARIDADE|CONTAS PROPRIAS',
+  rateio: 'RATEIO|REEMBOLSO TERCEIROS|RACHADINHA',
   invest: 'APLIC|RESGATE|RESG=|CDB=|RDB=|RDC=|LCI=|LCA=|POUPANCA|TESOURO DIRETO|INVEST|CORRETORA|NUINVEST|FUNDO DE INV|PREVIDENCIA',
 };
 function regrasPadrao() {
   const out = [];
-  for (const [cat, lista] of Object.entries(REGRAS_PADRAO)) for (let t of lista.split('|')) {
-    const r = { cat, padrao: true, sinal: 0, modo: 'p' };
-    if (t[0] === '+') { r.sinal = 1; t = t.slice(1); } else if (t[0] === '-') { r.sinal = -1; t = t.slice(1); }
-    if (t.endsWith('=')) { r.modo = 'w'; t = t.slice(0, -1); }
-    r.texto = t; r.id = `p:${cat}:${r.sinal}:${t}`; out.push(r);
+  for (const [chave, lista] of Object.entries(REGRAS_PADRAO)) {
+    const [cat, sub] = chave.split(':');
+    for (let t of lista.split('|')) {
+      const r = { cat, sub: sub || null, padrao: true, sinal: 0, modo: 'p' };
+      if (t[0] === '+') { r.sinal = 1; t = t.slice(1); } else if (t[0] === '-') { r.sinal = -1; t = t.slice(1); }
+      if (t.endsWith('=')) { r.modo = 'w'; t = t.slice(0, -1); }
+      r.texto = t; r.id = `p:${cat}:${r.sub || ''}:${r.sinal}:${t}`; out.push(r);
+    }
   }
   return out;
 }
 async function semear() {
-  S.cats = CATS_PADRAO.map(([id, nome, tipo], i) => ({ id, nome, tipo, ordem: i, orc: null }));
+  S.cats = CATS_PADRAO.map(([id, nome, tipo, subs], i) => ({ id, nome, tipo, ordem: i, orc: null, subs: subs.map(s => ({ ...s })) }));
   S.regras = regrasPadrao();
   await DB.gravar('cats', S.cats); await DB.gravar('regras', S.regras);
   await DB.meta('criadoEm', hoje());
+  await DB.meta('v16Migracao', true);
   indexar();
 }
 
 // ───────────────────────── aprendizado de máquina (classificador) ─────────────────────────
 const PALAVRAS_VAZIAS = new Set('PIX ENVIADO RECEBIDO TRANSF TRANSFERENCIA TED DOC TEV COMPRA COMPRAS CARTAO DEBITO CREDITO PAGTO PAGAMENTO PGTO VISA ELECTRON ELO MASTER MASTERCARD MAESTRO DE DA DO DAS DOS COM NO NA EM PARA QR CODE DES REM VIA A O E BR SAO PAULO BELO HORIZONTE PARC PARCELA'.split(' '));
-const IA = { prontos: false, nManuais: 0, nTotal: 0, catPeso: {}, featCat: {}, featTot: {}, vocab: new Set(), exManuais: [] };
+const IA = { prontos: false, nManuais: 0, nTotal: 0, catPeso: {}, featCat: {}, featTot: {}, vocab: new Set(), exManuais: [], subEx: {} };
 
 function faixaValor(cent) {
   const v = Math.abs(cent) / 100;
@@ -232,7 +436,7 @@ function extrairFeatures(desc, valor, conta, data) {
 }
 
 function treinarModelo() {
-  IA.catPeso = {}; IA.featCat = {}; IA.featTot = {}; IA.vocab = new Set(); IA.exManuais = [];
+  IA.catPeso = {}; IA.featCat = {}; IA.featTot = {}; IA.vocab = new Set(); IA.exManuais = []; IA.subEx = {};
   IA.nManuais = 0; IA.nTotal = 0;
   const somar = (cat, feats, peso) => {
     if (!S.catMap[cat]) return;
@@ -244,13 +448,18 @@ function treinarModelo() {
       IA.featTot[cat] = (IA.featTot[cat] || 0) + peso;
     }
   };
-  for (const [cat, lista] of Object.entries(REGRAS_PADRAO)) {
+  for (const [chave, lista] of Object.entries(REGRAS_PADRAO)) {
+    const [cat, sub] = chave.split(':');
     if (!S.catMap[cat] || S.catMap[cat].tipo === 'mov') continue;
     for (let t of lista.split('|')) {
       t = t.replace(/^[+-]|=$/g, '');
-      const { feats } = extrairFeatures(t, -5000, null, '');
+      const { feats, sig } = extrairFeatures(t, -5000, null, '');
       const soTexto = feats.filter(f => f.startsWith('w:') || f.startsWith('bi:'));
       if (soTexto.length) somar(cat, soTexto, 0.35);
+      if (sub && S.subMap[cat]?.[sub] && sig.length) {
+        if (!IA.subEx[cat]) IA.subEx[cat] = [];
+        IA.subEx[cat].push({ sub, sig: new Set(sig), peso: 0.6 });
+      }
     }
   }
   for (const t of S.tx) {
@@ -259,12 +468,31 @@ function treinarModelo() {
     const { feats, sig } = extrairFeatures(t.desc, t.valor, S.contaMap[t.conta], t.data);
     somar(t.cat, feats, peso);
     IA.nTotal++;
+    if (t.sub && S.subMap[t.cat]?.[t.sub] && sig.length) {
+      if (!IA.subEx[t.cat]) IA.subEx[t.cat] = [];
+      IA.subEx[t.cat].push({ sub: t.sub, sig: new Set(sig), peso });
+    }
     if (t.catManual) {
       IA.nManuais++;
-      if (sig.length) IA.exManuais.push({ cat: t.cat, sig: new Set(sig), valor: t.valor, conta: t.conta });
+      if (sig.length) IA.exManuais.push({ cat: t.cat, sub: t.sub || null, sig: new Set(sig), valor: t.valor, conta: t.conta });
     }
   }
   IA.prontos = true;
+}
+
+function preverSubcategoria(catId, sig) {
+  const lista = IA.subEx[catId];
+  if (!lista || !lista.length || !sig.length) return null;
+  const pontos = {};
+  for (const ex of lista) {
+    let comuns = 0;
+    for (const w of sig) if (ex.sig.has(w)) comuns++;
+    if (!comuns) continue;
+    const ratio = comuns / Math.max(sig.length, ex.sig.size);
+    if (ratio >= 0.4) pontos[ex.sub] = (pontos[ex.sub] || 0) + ratio * ex.peso;
+  }
+  const ord = Object.entries(pontos).sort((a, b) => b[1] - a[1]);
+  return ord[0] && ord[0][1] >= 0.6 ? ord[0][0] : null;
 }
 
 function preverCategoria(desc, valor, conta, data) {
@@ -274,7 +502,7 @@ function preverCategoria(desc, valor, conta, data) {
     if (ehEntrada) return c.tipo === 'receita' || (c.tipo === 'mov' && (IA.catPeso[c.id] || 0) > 0);
     return c.tipo === 'gasto' || (c.tipo === 'mov' && (IA.catPeso[c.id] || 0) > 0);
   });
-  if (!candidatas.length) return { cat: null, conf: 0, top: [] };
+  if (!candidatas.length) return { cat: null, sub: null, conf: 0, top: [] };
 
   const { feats, sig } = extrairFeatures(desc, valor, conta, data);
   const V = Math.max(1, IA.vocab.size);
@@ -314,42 +542,44 @@ function preverCategoria(desc, valor, conta, data) {
   const somaE = exps.reduce((n, x) => n + x.e, 0) || 1;
   const fatorAmostra = Math.min(1, 0.55 + (IA.nManuais / 12) * 0.45);
   const top = exps
-    .map(x => ({ cat: x.cat, conf: (x.e / somaE) * fatorAmostra }))
+    .map(x => ({ cat: x.cat, sub: preverSubcategoria(x.cat, sig), conf: (x.e / somaE) * fatorAmostra }))
     .sort((a, b) => b.conf - a.conf);
 
-  return { cat: top[0]?.cat || null, conf: top[0]?.conf || 0, top };
+  return { cat: top[0]?.cat || null, sub: top[0]?.sub || null, conf: top[0]?.conf || 0, top };
 }
 
-/** Devolve o id da categoria para um lançamento, ou null. */
+/** Devolve { cat, sub } para um lançamento. */
 function categorizar(desc, valor, conta, data = '') {
   const n = norm(desc), pad = ` ${n} `;
-  if (conta && conta.tipo === 'cartao' && valor > 0 && /\b(PAGAMENTO|PAGTO|PGTO|PAG)\b/.test(n)) return 'fatura';
+  if (conta && conta.tipo === 'cartao' && valor > 0 && /\b(PAGAMENTO|PAGTO|PGTO|PAG)\b/.test(n)) return { cat: 'fatura', sub: null };
   for (const r of S.regrasOrd) {
     if (r.padrao) continue;
     if (r.sinal && Math.sign(valor) !== r.sinal) continue;
     if (!S.catMap[r.cat]) continue;
     const ok = r.modo === 'w' ? pad.includes(` ${r.texto} `) : r.modo === 'p' ? pad.includes(` ${r.texto}`) : n.includes(r.texto);
-    if (ok) return r.cat;
+    if (ok) return { cat: r.cat, sub: r.sub && S.subMap[r.cat]?.[r.sub] ? r.sub : null };
   }
   const ia = IA.nManuais >= 3 ? preverCategoria(desc, valor, conta, data) : null;
-  if (ia && ia.conf >= 0.85 && ia.cat) return ia.cat;
+  if (ia && ia.conf >= 0.85 && ia.cat) return { cat: ia.cat, sub: ia.sub || null };
   for (const r of S.regrasOrd) {
     if (!r.padrao) continue;
     if (r.sinal && Math.sign(valor) !== r.sinal) continue;
     if (!S.catMap[r.cat]) continue;
     const ok = r.modo === 'w' ? pad.includes(` ${r.texto} `) : r.modo === 'p' ? pad.includes(` ${r.texto}`) : n.includes(r.texto);
-    if (ok) return r.cat;
+    if (ok) return { cat: r.cat, sub: r.sub && S.subMap[r.cat]?.[r.sub] ? r.sub : null };
   }
-  if (ia && ia.conf >= 0.78 && ia.cat) return ia.cat;
-  return null;
+  if (ia && ia.conf >= 0.78 && ia.cat) return { cat: ia.cat, sub: ia.sub || null };
+  return { cat: null, sub: null };
 }
 async function reaplicarRegras() {
   treinarModelo();
   const mud = [];
   for (const t of S.tx) {
     if (t.catManual) continue;
-    const c = categorizar(t.desc, t.valor, S.contaMap[t.conta], t.data);
-    if (c !== t.cat) { t.cat = c; mud.push(t); }
+    const { cat, sub } = categorizar(t.desc, t.valor, S.contaMap[t.conta], t.data);
+    if (cat !== t.cat || (sub || null) !== (t.sub || null)) {
+      t.cat = cat; t.sub = sub || null; mud.push(t);
+    }
   }
   if (mud.length) {
     await DB.gravar('tx', mud);
@@ -386,21 +616,39 @@ function lerOFX(txt) {
     const bankid = tag(cab, 'BANKID'), acct = tag(cab, 'ACCTID');
     const banco = nomeBanco(bankid, org);
     const fim = acct.replace(/[^0-9Xx*]/g, '').slice(-4);
+    const dtStart = parseData(tag(corpo, 'DTSTART').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3'));
+    const dtEnd = parseData(tag(corpo, 'DTEND').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3'));
+    const ledger = (/<LEDGERBAL>([\s\S]*?)(?=<\/LEDGERBAL>|<AVAILBAL>|<\/(?:CC)?STMTRS>|$)/i.exec(corpo) || [])[1]
+      || (/<AVAILBAL>([\s\S]*?)(?=<\/AVAILBAL>|<\/(?:CC)?STMTRS>|$)/i.exec(corpo) || [])[1] || '';
+    const balAmt = parseValor(tag(ledger, 'BALAMT'));
+    const dtAsOf = parseData(tag(ledger, 'DTASOF').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3'));
+
     const itens = [];
+    let saldoIni = NaN, saldoIniData = null, saldoFim = NaN, saldoFimData = null;
     for (const parte of corpo.split(/<STMTTRN>/i).slice(1)) {
       const b = parte.split(/<\/STMTTRN>/i)[0];
       const data = parseData(tag(b, 'DTPOSTED').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3'));
       let valor = parseValor(tag(b, 'TRNAMT'));
       const tipo = tag(b, 'TRNTYPE').toUpperCase(), nome = tag(b, 'NAME'), memo = tag(b, 'MEMO');
-      if (!data || !Number.isFinite(valor) || valor === 0) continue;
+      if (!data || !Number.isFinite(valor)) continue;
       if ((tipo === 'DEBIT' && valor > 0) || (tipo === 'CREDIT' && valor < 0)) valor = -valor;
       const desc = (nome && memo && !memo.includes(nome) && !nome.includes(memo) ? `${nome} ${memo}` : (memo || nome || 'Sem descrição'));
-      if (/^SALDO\b/i.test(desc)) continue;
+      if (/^SALDO\b/i.test(desc)) {
+        if (/ANTERIOR|INICIAL/i.test(desc)) { saldoIni = valor; saldoIniData = data; }
+        else if (/FINAL|ATUAL|DISPONIVEL|TOTAL|DO DIA/i.test(desc)) { saldoFim = valor; saldoFimData = data; }
+        continue;
+      }
+      if (valor === 0) continue;
       itens.push({ data, valor, desc, fitid: tag(b, 'FITID') });
     }
+    const saldo = {};
+    if (Number.isFinite(saldoIni)) { saldo.ini = saldoIni; saldo.iniData = saldoIniData; }
+    if (Number.isFinite(balAmt)) { saldo.fim = balAmt; saldo.fimData = dtAsOf || dtEnd; }
+    else if (Number.isFinite(saldoFim)) { saldo.fim = saldoFim; saldo.fimData = saldoFimData; }
+    if (dtStart) saldo.dtStart = dtStart;
     return {
       conta: { chave: `${cartao ? 'cc' : 'ck'}|${bankid}|${acct}`, banco, tipo: cartao ? 'cartao' : 'conta', nome: `${banco} · ${cartao ? 'cartão' : 'conta'}${fim ? ' final ' + fim : ''}` },
-      itens,
+      itens, saldo,
     };
   }).filter(l => l.itens.length);
 }
@@ -455,6 +703,8 @@ function lerCSV(txt, nomeArq = '') {
   let cValor = acha(/^(VALOR|VALUE|AMOUNT|QUANTIA|MONTANTE)\b/);
   if (cDeb >= 0 && cCred >= 0 && cValor < 0) cValor = cCred; else cDeb = -1;
   if (cValor < 0) cValor = [...Array(ncol).keys()].filter(i => i !== cData && !/SALDO|DOC/.test(norm(cab[i]))).sort((a, b) => conte(b, ehNum) - conte(a, ehNum))[0] ?? 0;
+  let cSaldo = acha(/^SALDO\b/);
+  if (cSaldo === cValor || cSaldo === cDeb) cSaldo = -1;
   let cDesc = acha(/HIST|DESCRI|LANCAMENTO|ESTABELECIMENTO|MEMO|DETALHE|TITLE|TITULO|NOME/);
   if (cDesc < 0) {
     const media = i => { const v = col(i).filter(c => c && !ehNum(c) && !parseData(c)); return v.length ? v.reduce((n, c) => n + c.length, 0) / dados.length : 0; };
@@ -462,11 +712,24 @@ function lerCSV(txt, nomeArq = '') {
   }
   const nums = col(cValor).concat(cDeb >= 0 ? col(cDeb) : []).filter(Boolean);
   const dec = nums.some(c => /,\d{1,2}\D*$/.test(c)) ? ',' : nums.some(c => /\.\d{1,2}\D*$/.test(c)) ? '.' : ',';
+  let metaIni = NaN, metaFim = NaN;
+  for (const r of rows.slice(0, i0)) {
+    const linhaTxt = r.join(' ');
+    const nLinha = norm(linhaTxt);
+    if (!/SALDO/.test(nLinha)) continue;
+    const mVal = /SALDO[^0-9-]*(-?\s*(?:R\$\s*)?[\d.,]+-?)/i.exec(linhaTxt);
+    const v = mVal ? parseValor(mVal[1], dec) : NaN;
+    if (Number.isFinite(v)) {
+      if (/SALDO\s*(ANTERIOR|INICIAL)/.test(nLinha)) metaIni = v;
+      else if (!Number.isFinite(metaFim)) metaFim = v;
+    }
+  }
   const preset = detectarPresetCSV(cab, nomeArq);
-  return { cab, dados, dec, cData, cDesc, cValor, cDeb, preset };
+  return { cab, dados, dec, cData, cDesc, cValor, cDeb, cSaldo, metaIni, metaFim, preset };
 }
 function csvItens(c, m) {
-  const itens = [];
+  const itens = [], saldosCol = [];
+  let saldoIni = c.metaIni, saldoIniData = null, saldoFim = c.metaFim, saldoFimData = null;
   for (const r of c.dados) {
     const data = parseData(r[m.data]), desc = (r[m.desc] || '').replace(/\s+/g, ' ').trim();
     let valor = parseValor(r[m.valor], c.dec);
@@ -474,14 +737,39 @@ function csvItens(c, m) {
       const deb = parseValor(r[m.deb], c.dec);
       valor = (Number.isFinite(valor) ? Math.abs(valor) : 0) - (Number.isFinite(deb) ? Math.abs(deb) : 0);
     }
-    if (!data || !Number.isFinite(valor) || valor === 0 || /^SALDO\b/i.test(desc)) continue;
-    itens.push({ data, desc: desc || 'Sem descrição', valor: m.inv ? -valor : valor, fitid: '' });
+    if (!data) continue;
+    if (/^SALDO\b/i.test(desc)) {
+      const vSaldo = Number.isFinite(valor) ? valor : (c.cSaldo >= 0 ? parseValor(r[c.cSaldo], c.dec) : NaN);
+      if (Number.isFinite(vSaldo)) {
+        if (/ANTERIOR|INICIAL/i.test(desc)) { saldoIni = vSaldo; saldoIniData = data; }
+        else { saldoFim = vSaldo; saldoFimData = data; }
+      }
+      continue;
+    }
+    if (!Number.isFinite(valor) || valor === 0) continue;
+    const valFinal = m.inv ? -valor : valor;
+    itens.push({ data, desc: desc || 'Sem descrição', valor: valFinal, fitid: '' });
+    if (c.cSaldo >= 0) {
+      const sRow = parseValor(r[c.cSaldo], c.dec);
+      if (Number.isFinite(sRow)) saldosCol.push({ data, valor: valFinal, saldo: sRow });
+    }
   }
-  return itens;
+  if (saldosCol.length && !Number.isFinite(saldoIni)) {
+    const asc = saldosCol[0].data <= saldosCol[saldosCol.length - 1].data;
+    const primeiro = asc ? saldosCol[0] : saldosCol[saldosCol.length - 1];
+    const ultimo = asc ? saldosCol[saldosCol.length - 1] : saldosCol[0];
+    saldoIni = primeiro.saldo - primeiro.valor;
+    saldoIniData = primeiro.data;
+    if (!Number.isFinite(saldoFim)) { saldoFim = ultimo.saldo; saldoFimData = ultimo.data; }
+  }
+  const saldo = {};
+  if (Number.isFinite(saldoIni)) { saldo.ini = saldoIni; saldo.iniData = saldoIniData; }
+  if (Number.isFinite(saldoFim)) { saldo.fim = saldoFim; saldo.fimData = saldoFimData; }
+  return { itens, saldo };
 }
 
 // ───────────────────────── importação e parcelamentos ─────────────────────────
-async function importarLote({ conta, itens }, opt = {}) {
+async function importarLote({ conta, itens, saldo }, opt = {}) {
   let c = S.contas.find(x => x.chave === conta.chave);
   let criada = false;
   if (!c) {
@@ -503,14 +791,16 @@ async function importarLote({ conta, itens }, opt = {}) {
     const mesComp = (c.tipo === 'cartao' && c.fechamento > 0 && +it.data.slice(8, 10) >= c.fechamento)
       ? addMes(it.data.slice(0, 7), 1) : it.data.slice(0, 7);
     const idxProj = S.tx.findIndex(t => t.projecao && t.conta === c.id && t.data.startsWith(mesComp) && t.valor === it.valor && !projRemover.includes(t.id));
-    let catHerdada = null;
+    let catHerdada = null, subHerdada = null;
     if (idxProj >= 0) {
       catHerdada = S.tx[idxProj].cat;
+      subHerdada = S.tx[idxProj].sub || null;
       projRemover.push(S.tx[idxProj].id);
     }
+    const autoCat = catHerdada ? { cat: catHerdada, sub: subHerdada } : categorizar(it.desc, it.valor, c, it.data);
     novos.push({
       id: uid(), conta: c.id, data: it.data, desc: it.desc, valor: it.valor, fitid: it.fitid || '',
-      cat: catHerdada || categorizar(it.desc, it.valor, c, it.data), catManual: !!catHerdada, manual: !!opt.manual, nota: '',
+      cat: autoCat.cat, sub: autoCat.sub || null, catManual: !!catHerdada, manual: !!opt.manual, nota: '',
       ...(parc ? { parcela: { atual: parc.atual, total: parc.total } } : {}),
     });
   }
@@ -521,12 +811,39 @@ async function importarLote({ conta, itens }, opt = {}) {
   S.tx.push(...novos);
   const pares = opt.semPares ? 0 : detectarTransferencias(novos);
   await DB.gravar('tx', novos);
-  treinarModelo();
+
   const datas = itens.map(i => i.data).sort();
+  let saldoInfo = null;
+  if (c.tipo === 'conta' && saldo && !c.saldoManual && datas.length) {
+    const dtIni = saldo.iniData || saldo.dtStart || datas[0];
+    let calcIni = NaN;
+    if (Number.isFinite(saldo.ini)) {
+      calcIni = saldo.ini;
+    } else if (Number.isFinite(saldo.fim)) {
+      const dtFim = saldo.fimData || datas[datas.length - 1];
+      const movPeriodo = S.tx
+        .filter(t => t.conta === c.id && !t.projecao && t.data >= dtIni && t.data <= dtFim)
+        .reduce((n, t) => n + t.valor, 0);
+      calcIni = saldo.fim - movPeriodo;
+    }
+    if (Number.isFinite(calcIni) && (!c.saldoData || dtIni <= c.saldoData)) {
+      if (c.saldoIni !== calcIni || c.saldoData !== dtIni) {
+        c.saldoIni = calcIni;
+        c.saldoData = dtIni;
+        await DB.gravar('contas', c);
+      }
+      const saldoAtual = c.saldoIni + S.tx
+        .filter(t => t.conta === c.id && !t.projecao && t.data >= c.saldoData)
+        .reduce((n, t) => n + t.valor, 0);
+      saldoInfo = { ini: c.saldoIni, data: c.saldoData, atual: saldoAtual };
+    }
+  }
+
+  treinarModelo();
   const parcelados = novos.filter(t => t.parcela && t.parcela.atual < t.parcela.total && t.valor < 0);
   return {
     conta: c, criada, novos: novos.length, repetidos: itens.length - novos.length,
-    semCat: novos.filter(t => !t.cat).length, pares, parcelados,
+    semCat: novos.filter(t => !t.cat).length, pares, parcelados, saldoInfo,
     de: datas[0], ate: datas[datas.length - 1], ultimoMes: novos.map(mesCompetencia).sort().pop(),
   };
 }
@@ -549,7 +866,7 @@ async function projetarParcelas(listaTx) {
       const novo = {
         id: uid(), conta: t.conta, data: dataFut,
         desc: descLimpa === t.desc ? `${t.desc} (${p2(k)}/${p2(p.total)})` : descLimpa,
-        valor: t.valor, fitid: '', cat: t.cat, catManual: !!t.cat, manual: false,
+        valor: t.valor, fitid: '', cat: t.cat, sub: t.sub || null, catManual: !!t.cat, manual: false,
         nota: 'Parcela projetada automaticamente', projecao: true,
         parcela: { atual: k, total: p.total },
       };
@@ -576,7 +893,7 @@ function detectarTransferencias(novos) {
     if (ehConta(a.conta) && a.cat !== 'transf' && reT.test(norm(a.desc)) && S.catMap.transf) {
       const b = S.tx.find(t => t.id !== a.id && t.conta !== a.conta && ehConta(t.conta) && !t.catManual && t.cat !== 'transf' && t.valor === -a.valor && Math.abs(difDias(t.data, a.data)) <= 1 && reT.test(norm(t.desc)));
       if (b) {
-        a.cat = b.cat = 'transf'; a.catManual = b.catManual = true; n++;
+        a.cat = b.cat = 'transf'; a.sub = b.sub = null; a.catManual = b.catManual = true; n++;
         if (!novos.includes(b)) DB.gravar('tx', b);
         continue;
       }
@@ -584,7 +901,7 @@ function detectarTransferencias(novos) {
     if ((ehConta(a.conta) || ehCartao(a.conta)) && a.cat !== 'fatura' && reFat.test(norm(a.desc)) && S.catMap.fatura) {
       const b = S.tx.find(t => t.id !== a.id && t.conta !== a.conta && !t.catManual && t.cat !== 'fatura' && t.valor === -a.valor && Math.abs(difDias(t.data, a.data)) <= 4 && ((ehConta(a.conta) && ehCartao(t.conta)) || (ehCartao(a.conta) && ehConta(t.conta))) && reFat.test(norm(a.desc)));
       if (b) {
-        a.cat = b.cat = 'fatura'; a.catManual = b.catManual = true; n++;
+        a.cat = b.cat = 'fatura'; a.sub = b.sub = null; a.catManual = b.catManual = true; n++;
         if (!novos.includes(b)) DB.gravar('tx', b);
       }
     }
@@ -629,11 +946,11 @@ function detectarRecorrencias(mesAlvo) {
     const noMes = porMes.get(mesAlvo) || [];
     const amostra = porMes.get(ultMes)[0];
     if (!noMes.length) {
-      pendentes.push({ chave, desc: amostra.desc, valor: media, cat: amostra.cat, dia: +amostra.data.slice(8, 10), aumento: 0 });
+      pendentes.push({ chave, desc: amostra.desc, valor: media, cat: amostra.cat, sub: amostra.sub || null, dia: +amostra.data.slice(8, 10), aumento: 0 });
     } else {
       const pago = noMes.reduce((n, x) => n - x.valor, 0);
       if (pago > media * 1.12 && (pago - media) >= 500) {
-        pendentes.push({ chave, desc: noMes[0].desc, valor: pago, cat: noMes[0].cat, dia: +noMes[0].data.slice(8, 10), aumento: pago - media, pago: true });
+        pendentes.push({ chave, desc: noMes[0].desc, valor: pago, cat: noMes[0].cat, sub: noMes[0].sub || null, dia: +noMes[0].data.slice(8, 10), aumento: pago - media, pago: true });
       }
     }
   }
@@ -665,9 +982,12 @@ async function importarArquivos(arquivos) {
         const r = await importarLote(l); algum = true;
         if (r.parcelados.length) ultimosParcelados.push(...r.parcelados);
         if (r.ultimoMes && (!ultimoMes || r.ultimoMes > ultimoMes)) ultimoMes = r.ultimoMes;
+        const txtSaldo = r.saldoInfo
+          ? ` · saldo inicial: <span class="num">${brl(r.saldoInfo.ini)}</span> (atual: <span class="num">${brl(r.saldoInfo.atual)}</span>)`
+          : '';
         res.insertAdjacentHTML('beforeend', `<div class="res"><b>${esc(r.conta.nome)}</b>${r.criada ? ' <span class="tag-n">conta nova</span>' : ''}<br>
           ${r.novos ? `${plural(r.novos, 'lançamento novo', 'lançamentos novos')}` : 'Nenhum lançamento novo'}${r.repetidos ? ` · ${plural(r.repetidos, 'já existia e foi ignorado', 'já existiam e foram ignorados')}` : ''}
-          <br><span class="mut">Período: ${dataBRa(r.de)} a ${dataBRa(r.ate)}${r.pares ? ` · ${plural(r.pares, 'conciliação automática (transferência/fatura)', 'conciliações automáticas (transferências/faturas)')}` : ''}</span>
+          <br><span class="mut">Período: ${dataBRa(r.de)} a ${dataBRa(r.ate)}${txtSaldo}${r.pares ? ` · ${plural(r.pares, 'conciliação automática (transferência/fatura)', 'conciliações automáticas (transferências/faturas)')}` : ''}</span>
           ${r.parcelados.length ? `<br>Encontrei <b>${plural(r.parcelados.length, 'compra parcelada', 'compras parceladas')}</b>. <button class="lnk" data-projparc="1">Projetar parcelas nos próximos meses</button>` : ''}
           ${r.semCat ? `<br>${plural(r.semCat, 'ficou sem categoria', 'ficaram sem categoria')}. <button class="lnk" data-revisar="1">Revisar agora</button>` : ''}</div>`);
       }
@@ -695,13 +1015,14 @@ function mapearCSV(c, nomeArq) {
   const igual = deCsv.find(x => x.chave.endsWith('|' + norm(nomePadrao)));
   $('#mConta').value = igual ? igual.id : deCsv.length === 1 && !c.preset ? deCsv[0].id : (c.preset?.tipo === 'cartao' ? 'nova:cartao' : 'nova:conta');
   const mapa = () => ({ data: +$('#mData').value, desc: +$('#mDesc').value, valor: +$('#mValor').value, deb: +$('#mDeb').value, inv: $('#mInv').checked });
-  const m0 = { data: c.cData, desc: c.cDesc, valor: c.cValor, deb: c.cDeb, inv: false }, it0 = csvItens(c, m0);
+  const m0 = { data: c.cData, desc: c.cDesc, valor: c.cValor, deb: c.cDeb, inv: false }, { itens: it0 } = csvItens(c, m0);
   $('#mInv').checked = c.preset ? c.preset.inv : (it0.length > 2 && it0.every(i => i.valor > 0));
   const prev = () => {
     $('#mNomeL').hidden = !$('#mConta').value.startsWith('nova:');
-    const it = csvItens(c, mapa());
+    const { itens: it, saldo } = csvItens(c, mapa());
+    const infoSaldo = Number.isFinite(saldo.ini) ? ` · saldo inicial detectado: ${brl(saldo.ini)}` : Number.isFinite(saldo.fim) ? ` · saldo final detectado: ${brl(saldo.fim)}` : '';
     $('#csvPrev').innerHTML = it.length
-      ? `<table><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr>${it.slice(0, 6).map(i => `<tr><td>${dataBRa(i.data)}</td><td>${esc(i.desc.slice(0, 50))}</td><td class="num ${i.valor > 0 ? 'pos' : ''}">${brl(i.valor)}</td></tr>`).join('')}</table><p class="mut">${plural(it.length, 'lançamento reconhecido', 'lançamentos reconhecidos')} (mostrando os primeiros). Gastos devem aparecer com sinal de menos.</p>`
+      ? `<table><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr>${it.slice(0, 6).map(i => `<tr><td>${dataBRa(i.data)}</td><td>${esc(formatarDescLista(i.desc).slice(0, 50))}</td><td class="num ${i.valor > 0 ? 'pos' : ''}">${brl(i.valor)}</td></tr>`).join('')}</table><p class="mut">${plural(it.length, 'lançamento reconhecido', 'lançamentos reconhecidos')}${infoSaldo}. Gastos devem aparecer com sinal de menos.</p>`
       : '<p class="mut">Com essas colunas não reconheci nenhum lançamento. Tente outras.</p>';
   };
   for (const id of ['mData', 'mDesc', 'mValor', 'mDeb', 'mConta', 'mInv']) $('#' + id).onchange = prev;
@@ -715,7 +1036,8 @@ function mapearCSV(c, nomeArq) {
         const tipo = v.slice(5), nome = $('#mNome').value.trim() || (tipo === 'cartao' ? 'Cartão' : 'Conta');
         conta = { chave: `csv|${tipo}|${norm(nome)}`, banco: c.preset?.banco || '', tipo, nome };
       } else { const x = S.contaMap[v]; conta = { chave: x.chave, banco: x.banco, tipo: x.tipo, nome: x.nome }; }
-      ok({ conta, itens: csvItens(c, mapa()) });
+      const { itens, saldo } = csvItens(c, mapa());
+      ok({ conta, itens, saldo });
     };
   });
 }
@@ -723,7 +1045,7 @@ function mapearCSV(c, nomeArq) {
 // ───────────────────────── contas do mês ─────────────────────────
 const tipoTx = t => S.catMap[t.cat]?.tipo || 'sem';
 function resumo(mes) {
-  const r = { entrou: 0, saiu: 0, porCat: {}, semN: 0, semGasto: 0, nEntradas: 0, gastos: [], n: 0 };
+  const r = { entrou: 0, saiu: 0, porCat: {}, porSub: {}, semN: 0, semGasto: 0, nEntradas: 0, gastos: [], n: 0 };
   for (const t of S.tx) {
     if (mesCompetencia(t) !== mes) continue;
     r.n++;
@@ -735,7 +1057,15 @@ function resumo(mes) {
       continue;
     }
     if (tp === 'receita') { r.entrou += t.valor; if (t.valor > 0) r.nEntradas++; }
-    else if (tp === 'gasto') { r.saiu -= t.valor; r.porCat[t.cat] = (r.porCat[t.cat] || 0) - t.valor; if (t.valor < 0) r.gastos.push(t); }
+    else if (tp === 'gasto') {
+      r.saiu -= t.valor;
+      r.porCat[t.cat] = (r.porCat[t.cat] || 0) - t.valor;
+      if (t.sub && S.subMap[t.cat]?.[t.sub]) {
+        if (!r.porSub[t.cat]) r.porSub[t.cat] = {};
+        r.porSub[t.cat][t.sub] = (r.porSub[t.cat][t.sub] || 0) - t.valor;
+      }
+      if (t.valor < 0) r.gastos.push(t);
+    }
     else { r.semN++; if (t.valor > 0) { r.entrou += t.valor; r.nEntradas++; } else { r.saiu -= t.valor; r.semGasto -= t.valor; r.gastos.push(t); } }
   }
   return r;
@@ -768,12 +1098,25 @@ function render() {
   ({ painel: rPainel, lancamentos: rLanc, importar: () => {}, orcamento: rOrc, ajustes: rAjustes })[S.view]();
 }
 
+function setValorKPI(el, valorCentavos, comClasseSinal = false) {
+  if (!el) return;
+  const txt = brl(valorCentavos);
+  el.textContent = txt;
+  const longo = txt.length >= 11;
+  if (comClasseSinal) {
+    el.className = 'num ' + (valorCentavos < 0 ? 'neg' : 'pos') + (longo ? ' val-longo' : '');
+  } else {
+    el.className = 'num' + (longo ? ' val-longo' : '');
+  }
+}
+
 function rPainel() {
   $('#vazio').hidden = temDados(); $('#painel').hidden = !temDados();
   if (!temDados()) return;
   const r = resumo(S.mes), ant = resumo(addMes(S.mes, -1)), sobra = r.entrou - r.saiu;
-  $('#kEntrou').textContent = brl(r.entrou); $('#kSaiu').textContent = brl(r.saiu);
-  const ks = $('#kSobra'); ks.textContent = brl(sobra); ks.className = 'num ' + (sobra < 0 ? 'neg' : 'pos');
+  setValorKPI($('#kEntrou'), r.entrou, false);
+  setValorKPI($('#kSaiu'), r.saiu, false);
+  setValorKPI($('#kSobra'), sobra, true);
   $('#kEntrouSub').textContent = r.nEntradas ? plural(r.nEntradas, 'entrada', 'entradas') : 'nada entrou ainda';
   let sub = '';
   if (ant.saiu > 0 && r.saiu > 0) { const d = Math.round((r.saiu / ant.saiu - 1) * 100); sub = d === 0 ? `igual a ${mesSo(addMes(S.mes, -1))}` : `${Math.abs(d)}% ${d > 0 ? 'a mais' : 'a menos'} que em ${mesSo(addMes(S.mes, -1))}`; }
@@ -788,16 +1131,14 @@ function rPainel() {
     kPrevBox.hidden = !mostrarPrev;
     if (mostrarPrev) {
       const prevSobra = sobra - pendFixas;
-      const kp = $('#kPrev');
-      kp.textContent = brl(prevSobra);
-      kp.className = 'num ' + (prevSobra < 0 ? 'neg' : 'pos');
+      setValorKPI($('#kPrev'), prevSobra, true);
       $('#kPrevSub').innerHTML = pendFixas > 0
         ? `menos <span class="num">${brl(pendFixas)}</span> pendentes`
         : 'contas fixas já pagas';
     }
   }
 
-  // faixa de saldos (com suporte a saldo inicial de referência) e faturas por conta
+  // faixa de saldos e faturas por conta
   const strip = $('#contasStrip');
   if (strip) {
     const porConta = S.contas.map(c => {
@@ -814,6 +1155,21 @@ function rPainel() {
     </div>`).join('');
   }
 
+  // card de rateio pendente a receber (aparece apenas quando houver saldo aberto)
+  let cRateio = $('#cardRateio');
+  if (!cRateio && strip) {
+    strip.insertAdjacentHTML('afterend', '<section class="card card-rateio" id="cardRateio" hidden></section>');
+    cRateio = $('#cardRateio');
+  }
+  if (cRateio) {
+    const pendRat = rateioPendente(S.mes);
+    cRateio.hidden = pendRat <= 0;
+    if (pendRat > 0) {
+      cRateio.innerHTML = `<div class="card-h"><h2>Rateio a receber</h2><button class="lnk" data-cat="rateio">Ver lançamentos</button></div>
+        <p class="orc-txt">Faltam <b class="num">${brl(pendRat)}</b> de reembolsos em <b>${esc(S.catMap.rateio?.nome || 'Rateio / Terceiros')}</b>. Os Pix recebidos marcados como rateio abatem esse saldo automaticamente.</p>`;
+    }
+  }
+
   // radar de contas fixas e assinaturas no mês atual
   const cFix = $('#cardFixas');
   if (cFix) {
@@ -823,7 +1179,7 @@ function rPainel() {
       const totPend = pend.reduce((n, x) => n + x.valor, 0);
       cFix.hidden = false;
       cFix.innerHTML = `<div class="card-h"><h2>Contas fixas e assinaturas</h2><span class="mut">${pend.length ? `faltam <span class="num">${brl(totPend)}</span>` : 'alerta de reajuste'}</span></div>
-        <ul class="fixas-lista">${recs.slice(0, 6).map(x => `<li><span class="fn">${esc(x.desc)}<small>${x.pago ? 'já caiu neste mês' : `previsto por volta do dia ${p2(x.dia)}`}${x.cat && S.catMap[x.cat] ? ` · ${esc(S.catMap[x.cat].nome)}` : ''}</small></span>
+        <ul class="fixas-lista">${recs.slice(0, 6).map(x => `<li><span class="fn">${esc(formatarDescLista(x.desc))}<small>${x.pago ? 'já caiu neste mês' : `previsto por volta do dia ${p2(x.dia)}`}${x.cat && S.catMap[x.cat] ? ` · ${esc(nomeCatSub(x.cat, x.sub))}` : ''}</small></span>
           <span class="fv"><span class="num">${brl(x.valor)}</span>${x.aumento ? `<span class="tag-alta num">↑ ${brl0(x.aumento)}</span>` : ''}<button type="button" class="x" data-ocultarfixa="${esc(x.chave)}" title="Não lembrar esta cobrança" aria-label="Ocultar">×</button></span></li>`).join('')}</ul>`;
     }
   }
@@ -868,7 +1224,7 @@ function rPainel() {
     $('#orcTxt').innerHTML = `Você usou <b class="num">${brl(usado)}</b> de <span class="num">${brl(total)}</span> (${Math.round(pct * 100)}%). ${ritmo}`;
   }
 
-  // categorias + comparativo com média de 3 meses
+  // categorias + subcategorias + comparativo com média de 3 meses
   const med3 = mediaTresMeses(S.mes);
   const linhas = S.cats.filter(c => c.tipo === 'gasto' && ((r.porCat[c.id] || 0) !== 0 || c.orc > 0)).map(c => ({ c, v: r.porCat[c.id] || 0 })).sort((a, b) => b.v - a.v);
   const maior = Math.max(1, ...linhas.map(l => l.v), r.semGasto);
@@ -882,13 +1238,26 @@ function rPainel() {
       const dif = Math.round((v / med3[c.id] - 1) * 100);
       if (Math.abs(dif) >= 10) comp = `<span>${Math.abs(dif)}% ${dif > 0 ? 'acima' : 'abaixo'} da média</span>`;
     }
-    return `<div class="cat" data-cat="${esc(c.id)}" role="button" tabindex="0"><span class="nome">${esc(c.nome)}</span><span class="valor">${brl(v)}</span>
-      <div class="trilho"><div class="enche${tem && v > c.orc ? ' estourou' : tem ? '' : ' livre'}" style="width:${Math.max(0, Math.min(100, pct * 100))}%"></div></div><span class="det"><span>${det}</span>${comp}</span></div>`;
+    const mapaSub = r.porSub[c.id] || {};
+    const subItens = (c.subs || [])
+      .map(s => ({ id: s.id, nome: s.nome, sv: mapaSub[s.id] || 0 }))
+      .filter(x => x.sv !== 0)
+      .sort((a, b) => b.sv - a.sv);
+    const somaSubs = subItens.reduce((n, x) => n + x.sv, 0);
+    if (subItens.length > 0 && (v - somaSubs) > 0) {
+      subItens.push({ id: '__semsub', nome: 'Outras / sem subcategoria', sv: v - somaSubs });
+    }
+    const subsHTML = subItens.length
+      ? `<div class="subcats">${subItens.map(s => `<div class="subcat" data-cat="${esc(c.id)}" data-sub="${esc(s.id)}" role="button" tabindex="0"><span class="sn">${esc(s.nome)}</span><span class="sv num">${brl(s.sv)}</span></div>`).join('')}</div>`
+      : '';
+
+    return `<div class="cat-bloco"><div class="cat" data-cat="${esc(c.id)}" role="button" tabindex="0"><span class="nome">${esc(c.nome)}</span><span class="valor">${brl(v)}</span>
+      <div class="trilho"><div class="enche${tem && v > c.orc ? ' estourou' : tem ? '' : ' livre'}" style="width:${Math.max(0, Math.min(100, pct * 100))}%"></div></div><span class="det"><span>${det}</span>${comp}</span></div>${subsHTML}</div>`;
   }).join('');
-  if (r.semGasto) h += `<div class="cat" data-cat="__sem" role="button" tabindex="0"><span class="nome">Sem categoria</span><span class="valor">${brl(r.semGasto)}</span><div class="trilho"><div class="enche sem" style="width:${Math.min(100, r.semGasto / maior * 100)}%"></div></div><span class="det"><span>toque para classificar</span></span></div>`;
+  if (r.semGasto) h += `<div class="cat-bloco"><div class="cat" data-cat="__sem" role="button" tabindex="0"><span class="nome">Sem categoria</span><span class="valor">${brl(r.semGasto)}</span><div class="trilho"><div class="enche sem" style="width:${Math.min(100, r.semGasto / maior * 100)}%"></div></div><span class="det"><span>toque para classificar</span></span></div></div>`;
   $('#cats').innerHTML = h || '<p class="mut">Nenhum gasto neste mês.</p>';
 
-  // últimos 6 meses (com setinhas < >, barras segmentadas pelas Top 3 categorias e 2 valores por mês)
+  // últimos 6 meses
   if (!S.histFim) S.histFim = S.mes;
   const ms = [5, 4, 3, 2, 1, 0].map(i => addMes(S.histFim, -i));
   const rs = ms.map(resumo);
@@ -943,13 +1312,29 @@ function rPainel() {
 
   // maiores gastos
   const top = r.gastos.sort((a, b) => a.valor - b.valor).slice(0, 5);
-  $('#top5').innerHTML = top.map(t => `<li data-tx="${t.id}" role="button" tabindex="0"><span class="d">${esc(t.desc)}<small>${dataBR(t.data)} · ${esc(S.catMap[t.cat]?.nome || 'Sem categoria')}</small></span><span class="valor">${brl(-t.valor)}</span></li>`).join('') || '<li class="mut">Nenhum gasto neste mês.</li>';
+  $('#top5').innerHTML = top.map(t => `<li data-tx="${t.id}" role="button" tabindex="0"><span class="d">${esc(formatarDescLista(t.desc))}<small>${dataBR(t.data)} · ${esc(nomeCatSub(t.cat, t.sub))}</small></span><span class="valor">${brl(-t.valor)}</span></li>`).join('') || '<li class="mut">Nenhum gasto neste mês.</li>';
 }
 const compacto = c => { const v = Math.abs(c) / 100; return v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'k' : Math.round(v).toLocaleString('pt-BR'); };
 
-function opcoesCat(sel, comSem) {
-  const g = (tipo, rot) => { const l = S.cats.filter(c => c.tipo === tipo); return l.length ? `<optgroup label="${rot}">${l.map(c => `<option value="${esc(c.id)}"${c.id === sel ? ' selected' : ''}>${esc(c.nome)}</option>`).join('')}</optgroup>` : ''; };
+function opcoesCat(sel, comSem, comSubs = false) {
+  const g = (tipo, rot) => {
+    const l = S.cats.filter(c => c.tipo === tipo);
+    if (!l.length) return '';
+    return `<optgroup label="${rot}">${l.map(c => {
+      const optMain = `<option value="${esc(c.id)}"${c.id === sel ? ' selected' : ''}>${esc(c.nome)}</option>`;
+      if (!comSubs || !(c.subs && c.subs.length)) return optMain;
+      const optsSub = c.subs.map(s => {
+        const val = `${c.id}:${s.id}`;
+        return `<option value="${esc(val)}"${val === sel ? ' selected' : ''}>↳ ${esc(s.nome)}</option>`;
+      }).join('');
+      return optMain + optsSub;
+    }).join('')}</optgroup>`;
+  };
   return (comSem ? `<option value=""${!sel ? ' selected' : ''}>${comSem}</option>` : '') + g('gasto', 'Gastos') + g('receita', 'Entradas') + g('mov', 'Não conta como gasto nem entrada');
+}
+function opcoesSub(catId, selSub) {
+  const subs = S.catMap[catId]?.subs || [];
+  return '<option value="">Sem subcategoria</option>' + subs.map(s => `<option value="${esc(s.id)}"${s.id === selSub ? ' selected' : ''}>${esc(s.nome)}</option>`).join('');
 }
 function filtrados() {
   const q = norm($('#busca').value), qv = $('#busca').value.trim().replace(/^R\$\s*/i, '').replace('.', ','), fc = $('#fCat').value, fa = $('#fConta').value, sem = $('#fSem').checked;
@@ -957,7 +1342,15 @@ function filtrados() {
   return S.tx.filter(t => {
     if (!busca && mesCompetencia(t) !== S.mes) return false;
     if (sem && S.catMap[t.cat]) return false;
-    if (fc && (fc === '__sem' ? S.catMap[t.cat] : (t.cat !== fc && t.abaterCat !== fc))) return false;
+    if (fc) {
+      if (fc === '__sem') { if (S.catMap[t.cat]) return false; }
+      else if (fc.includes(':')) {
+        const [cid, sid] = fc.split(':');
+        if (t.cat !== cid) return false;
+        if (sid === '__semsub') { if (t.sub && S.subMap[cid]?.[t.sub]) return false; }
+        else if (t.sub !== sid) return false;
+      } else if (t.cat !== fc && t.abaterCat !== fc) return false;
+    }
     if (fa && t.conta !== fa) return false;
     if (busca) {
       const v = fmtNum.format(Math.abs(t.valor) / 100);
@@ -966,19 +1359,39 @@ function filtrados() {
     return true;
   }).sort((a, b) => b.data.localeCompare(a.data) || a.desc.localeCompare(b.desc));
 }
-function montarChipsTriagem(t, topGeral) {
+function montarChipsTriagem(t, topGeral, pendRat) {
   const pred = preverCategoria(t.desc, t.valor, S.contaMap[t.conta], t.data);
   const sugs = pred.top.filter(x => x.conf >= 0.14 && S.catMap[x.cat]).slice(0, 2);
   const usados = new Set(sugs.map(x => x.cat));
-  const base = t.valor > 0 ? S.cats.filter(x => x.tipo === 'receita').slice(0, 4) : topGeral;
-  const extras = base.filter(c => !usados.has(c.id)).slice(0, Math.max(2, 6 - sugs.length));
-  const btnIA = sugs.map(x => `<button type="button" class="qchip qchip-ia" data-quicktx="${esc(t.id)}" data-quickcat="${esc(x.cat)}" title="Confiança estimada: ${Math.round(x.conf * 100)}%">✦ ${esc(S.catMap[x.cat].nome)}</button>`).join('');
-  const btnBase = extras.map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}">${esc(qc.nome)}</button>`).join('');
+
+  if (t.valor > 0) {
+    let chipRateio = '';
+    if (S.catMap.rateio) {
+      if (pendRat > 0) {
+        const rot = t.valor === pendRat
+          ? `↩️ Rateio (quita ${brl(pendRat)})`
+          : `↩️ Rateio (falta ${brl(pendRat)})`;
+        chipRateio = `<button type="button" class="qchip qchip-rateio" data-quicktx="${esc(t.id)}" data-quickcat="rateio" data-quicksub="">${esc(rot)}</button>`;
+      } else {
+        chipRateio = `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="rateio" data-quicksub="">Rateio / Terceiros</button>`;
+      }
+      usados.add('rateio');
+    }
+    const baseRec = S.cats.filter(c => c.tipo === 'receita' && !usados.has(c.id)).slice(0, 3);
+    const btnIA = sugs.map(x => `<button type="button" class="qchip qchip-ia" data-quicktx="${esc(t.id)}" data-quickcat="${esc(x.cat)}" data-quicksub="${esc(x.sub || '')}">✦ ${esc(nomeCatSub(x.cat, x.sub))}</button>`).join('');
+    const btnBase = baseRec.map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}" data-quicksub="">${esc(qc.nome)}</button>`).join('');
+    const btnAbate = `<button type="button" class="qchip" data-abatetx="${esc(t.id)}">Abater de gasto…</button>`;
+    return `<div class="qcats">${chipRateio}${btnIA}${btnBase}${btnAbate}<button type="button" class="qchip qchip-out" data-tx="${esc(t.id)}">+ Outra…</button></div>`;
+  }
+
+  const extras = topGeral.filter(c => !usados.has(c.id)).slice(0, Math.max(2, 6 - sugs.length));
+  const btnIA = sugs.map(x => `<button type="button" class="qchip qchip-ia" data-quicktx="${esc(t.id)}" data-quickcat="${esc(x.cat)}" data-quicksub="${esc(x.sub || '')}" title="Confiança estimada: ${Math.round(x.conf * 100)}%">✦ ${esc(nomeCatSub(x.cat, x.sub))}</button>`).join('');
+  const btnBase = extras.map(qc => `<button type="button" class="qchip" data-quicktx="${esc(t.id)}" data-quickcat="${esc(qc.id)}" data-quicksub="">${esc(qc.nome)}</button>`).join('');
   return `<div class="qcats">${btnIA}${btnBase}<button type="button" class="qchip qchip-out" data-tx="${esc(t.id)}">+ Outra…</button></div>`;
 }
 function rLanc() {
   const fc = $('#fCat'), fa = $('#fConta'), vc = fc.value, va = fa.value;
-  fc.innerHTML = '<option value="">Todas as categorias</option><option value="__sem">Sem categoria</option>' + opcoesCat(vc);
+  fc.innerHTML = '<option value="">Todas as categorias</option><option value="__sem">Sem categoria</option>' + opcoesCat(vc, '', true);
   fc.value = vc; if (fc.selectedIndex < 0) fc.value = '';
   fa.innerHTML = '<option value="">Todas as contas</option>' + S.contas.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
   fa.value = va; if (fa.selectedIndex < 0) fa.value = '';
@@ -991,18 +1404,20 @@ function rLanc() {
     if (t.valor > 0 && t.abaterCat && S.catMap[t.abaterCat]?.tipo === 'gasto') { sai -= t.valor; continue; }
     if (t.valor > 0) ent += t.valor; else sai -= t.valor;
   }
-  $('#lancResumo').innerHTML = l.length ? `${plural(l.length, 'lançamento', 'lançamentos')}${busca ? ' em todos os meses' : ''} · saiu <span class="num">${brl(sai)}</span> · entrou <span class="num">${brl(ent)}</span>` : '';
+  const pendRat = rateioPendente(S.mes);
+  const infoRat = pendRat > 0 ? ` · rateio a receber: <span class="num">${brl(pendRat)}</span>` : '';
+  $('#lancResumo').innerHTML = l.length ? `${plural(l.length, 'lançamento', 'lançamentos')}${busca ? ' em todos os meses' : ''} · saiu <span class="num">${brl(sai)}</span> · entrou <span class="num">${brl(ent)}</span>${infoRat}` : '';
   const topCats = modoTriagem ? topCategoriasGasto(6) : [];
   $('#lanc').innerHTML = l.slice(0, S.limite).map(t => {
     const c = S.catMap[t.cat];
     const mc = mesCompetencia(t);
     const parc = t.parcela || detectarParcela(t.desc);
-    const chips = modoTriagem ? montarChipsTriagem(t, topCats) : '';
+    const chips = modoTriagem ? montarChipsTriagem(t, topCats, pendRat) : '';
     const tagAbate = t.valor > 0 && t.abaterCat && S.catMap[t.abaterCat]
       ? `<span class="tag">abate ${esc(S.catMap[t.abaterCat].nome)}</span>`
-      : `<span class="tag${c ? (c.tipo === 'mov' ? ' mov' : '') : ' sem'}">${esc(c ? c.nome : 'Sem categoria')}</span>`;
+      : `<span class="tag${c ? (c.tipo === 'mov' ? ' mov' : '') : ' sem'}">${esc(nomeCatSub(t.cat, t.sub))}</span>`;
     return `<li class="${t.projecao ? 'proj' : ''}" data-tx="${t.id}" role="button" tabindex="0"><span class="dia"><b>${t.data.slice(8, 10)}</b>${mesCurto(t.data.slice(0, 7))}</span>
-      <span class="desc">${esc(t.desc)}</span><span class="valor ${t.valor > 0 ? 'pos' : ''}${c?.tipo === 'mov' ? ' apag' : ''}">${t.valor > 0 ? '+ ' : ''}${brl(Math.abs(t.valor))}</span>
+      <span class="desc" title="${esc(t.desc)}">${esc(formatarDescLista(t.desc))}</span><span class="valor ${t.valor > 0 ? 'pos' : ''}${c?.tipo === 'mov' ? ' apag' : ''}">${t.valor > 0 ? '+ ' : ''}${brl(Math.abs(t.valor))}</span>
       <span class="meta"><span class="meta-esq">${tagAbate}${parc ? `<span class="parc-tag">${parc.atual}/${parc.total}</span>` : ''}${t.projecao ? '<span class="parc-tag">previsto</span>' : ''}${mc !== t.data.slice(0, 7) ? `<span class="parc-tag">fatura ${mesCurto(mc)}</span>` : ''}</span><span class="ct">${esc(S.contaMap[t.conta]?.nome || '')}</span></span>${chips}</li>`;
   }).join('') || `<li class="vazia">${temDados() ? 'Nenhum lançamento com esses filtros' + (busca ? '.' : ` em ${mesLongo(S.mes)}.`) : 'Ainda não há lançamentos. Importe um extrato ou adicione um lançamento manual.'}</li>`;
   $('#lancMais').hidden = l.length <= S.limite;
@@ -1021,6 +1436,14 @@ async function salvarOrc(id, cent) {
   c.orc = cent > 0 ? cent : null; await DB.gravar('cats', c);
 }
 
+function syncSubRegra() {
+  const selC = $('#rCat'), selS = $('#rSub');
+  if (!selC || !selS) return;
+  const subs = S.catMap[selC.value]?.subs || [];
+  selS.hidden = !subs.length;
+  selS.innerHTML = subs.length ? opcoesSub(selC.value, '') : '';
+}
+
 function rAjustes() {
   $('#ver').textContent = VERSAO;
   $('#tema').value = S.meta.tema || 'auto';
@@ -1031,13 +1454,17 @@ function rAjustes() {
     return `<li data-conta="${c.id}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${tipoC[c.tipo] || ''}${ext} · ${plural(nTx(c.id), 'lançamento', 'lançamentos')}</small></span><span class="seta">›</span></li>`;
   }).join('') || '<li class="mut">Nenhuma conta ainda.</li>';
   const minhas = S.regras.filter(r => !r.padrao), pad = S.regras.filter(r => r.padrao).sort((a, b) => (S.catMap[a.cat]?.ordem ?? 99) - (S.catMap[b.cat]?.ordem ?? 99) || a.texto.localeCompare(b.texto));
-  const li = r => `<li><span><b>${esc(r.texto)}</b> → ${esc(S.catMap[r.cat]?.nome || '?')}${r.sinal ? `<small>${r.sinal > 0 ? 'só entradas' : 'só saídas'}</small>` : ''}</span><button class="x" data-del-regra="${esc(r.id)}" aria-label="Excluir regra ${esc(r.texto)}">×</button></li>`;
+  const li = r => `<li><span><b>${esc(r.texto)}</b> → ${esc(nomeCatSub(r.cat, r.sub))}${r.sinal ? `<small>${r.sinal > 0 ? 'só entradas' : 'só saídas'}</small>` : ''}</span><button class="x" data-del-regra="${esc(r.id)}" aria-label="Excluir regra ${esc(r.texto)}">×</button></li>`;
   $('#regras').innerHTML = minhas.map(li).join('') || '<li class="mut">Você ainda não criou regras fixas. Elas aparecem aqui quando você salva uma regra.</li>';
   if ($('#iaStatus')) $('#iaStatus').textContent = `Classificação inteligente ativa · ${plural(IA.nTotal, 'lançamento analisado', 'lançamentos analisados')} (${plural(IA.nManuais, 'escolha manual', 'escolhas manuais')}).`;
   $('#regrasPadraoT').textContent = `Ver as ${pad.length} regras que já vêm no app`;
   $('#regrasPadrao').innerHTML = pad.map(li).join('');
-  $('#rCat').innerHTML = opcoesCat('mercado');
-  $('#cats-lista').innerHTML = S.cats.map(c => `<li data-catedit="${esc(c.id)}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${TIPO_NOME[c.tipo]}</small></span><span class="seta">›</span></li>`).join('');
+  $('#rCat').innerHTML = opcoesCat('alimentacao');
+  syncSubRegra();
+  $('#cats-lista').innerHTML = S.cats.map(c => {
+    const nSubs = (c.subs || []).length;
+    return `<li data-catedit="${esc(c.id)}" role="button" tabindex="0"><span><b>${esc(c.nome)}</b><small>${TIPO_NOME[c.tipo]}${nSubs ? ` · ${plural(nSubs, 'subcategoria', 'subcategorias')}` : ''}</small></span><span class="seta">›</span></li>`;
+  }).join('');
   $('#bkInfo').textContent = S.meta.ultimoBackup ? `Última cópia salva em ${dataBRa(S.meta.ultimoBackup)}. O Bolso lembra você a cada 30 dias.` : 'Nenhuma cópia salva ainda. O Bolso lembra você a cada 30 dias.';
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent), instalado = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   $('#cardInstalar').hidden = instalado || !!S.meta.ocultarInstalar || !(promptInstalar || ios);
@@ -1066,68 +1493,168 @@ async function contaDinheiro() {
   if (!c) { c = { id: uid(), chave: 'dinheiro', banco: '', tipo: 'dinheiro', nome: 'Dinheiro' }; S.contas.push(c); await DB.gravar('contas', c); indexar(); }
   return c;
 }
+
+/** Atalho rápido para abater uma entrada (estorno / Pix de rachadinha) direto de uma categoria de gasto. */
+async function abaterTxRapido(t) {
+  const gastos = S.cats.filter(c => c.tipo === 'gasto');
+  if (!gastos.length) return;
+  const r = await dialogo({
+    titulo: 'Abater de qual gasto?',
+    desc: `${t.desc} · +${brl(t.valor)}. Este valor vai reduzir o gasto da categoria escolhida (sem contar como renda).`,
+    ok: 'Abater', cancelar: 'Voltar',
+    corpo: `<label>Categoria do gasto a abater<select name="abaterCat">${gastos.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('')}</select></label>`,
+    aoAbrir: d => $('[name=abaterCat]', d).focus(),
+  });
+  if (!r || !r.abaterCat) return;
+  t.cat = null;
+  t.sub = null;
+  t.abaterCat = r.abaterCat;
+  t.catManual = true;
+  await DB.gravar('tx', t);
+  render();
+  toast(`Abatido de ${S.catMap[r.abaterCat]?.nome || 'gasto'}`);
+}
+
+/** Divide lançamento em "Minha parte" + "Restante" (com opção de Rateio / Terceiros a receber). */
 async function dividirTx(t) {
   const totalAbs = Math.abs(t.valor);
   if (totalAbs < 200) return toast('Valor muito pequeno para dividir.');
+  const ehSaida = t.valor < 0;
+  const catPadrao1 = (S.catMap[t.cat]?.tipo === 'gasto' && t.cat !== 'pix') ? t.cat : (S.catMap.compras ? 'compras' : 'alimentacao');
+  const opGastos = opcoesCat(catPadrao1, '', true);
+  const opTodas = opcoesCat(S.catMap.alimentacao ? 'alimentacao' : catPadrao1, '', true);
+
   const r = await dialogo({
     titulo: 'Dividir lançamento',
-    desc: `Total original: ${brl(totalAbs)} (${t.desc}). Informe quanto vai para a segunda categoria.`,
-    ok: 'Dividir',
-    corpo: `<label>Valor da segunda parte (R$)<input name="parte" required inputmode="decimal" placeholder="0,00"></label>
-      <label>Categoria da segunda parte<select name="cat">${opcoesCat('compras')}</select></label>
-      <label>Descrição (opcional)<input name="desc" maxlength="120" value="${esc(t.desc)}"></label>`,
-    aoAbrir: d => $('[name=parte]', d).focus(),
+    desc: `Total: ${brl(totalAbs)} (${t.desc})`,
+    ok: 'Dividir', cancelar: 'Voltar',
+    corpo: `<label>Minha parte / primeira parte (R$)<input name="parte" required inputmode="decimal" placeholder="0,00"></label>
+      <label>Categoria desta parte<select name="cat1">${opGastos}</select></label>
+      <label class="chk"${ehSaida && S.catMap.rateio ? '' : ' hidden'}><input type="checkbox" name="ehRateio" id="chkRateio" checked> <span>Restante é rateio de terceiros (a receber, não conta como gasto)</span></label>
+      <label id="lblCat2" hidden>Categoria do restante<select name="cat2">${opTodas}</select></label>
+      <div class="split-preview" id="splitPreview">Digite o valor da sua parte para ver como fica a divisão.</div>
+      <label>Observação (opcional)<input name="nota" maxlength="120" value="${esc(t.nota || '')}"></label>`,
+    aoAbrir: d => {
+      const inp = $('[name=parte]', d);
+      const sel1 = $('[name=cat1]', d);
+      const chk = $('#chkRateio', d);
+      const lbl2 = $('#lblCat2', d);
+      const sel2 = $('[name=cat2]', d);
+      const prev = $('#splitPreview', d);
+
+      const nomeOp = sel => (sel.options[sel.selectedIndex]?.text || '').replace(/^↳\s*/, '');
+      const atualizar = () => {
+        const rat = ehSaida && S.catMap.rateio && chk.checked;
+        lbl2.hidden = rat;
+        const p = Math.abs(parseValor(inp.value, ','));
+        if (!Number.isFinite(p) || p <= 0 || p >= totalAbs) {
+          prev.innerHTML = `Total a dividir: <b class="num">${brl(totalAbs)}</b>`;
+          return;
+        }
+        const resto = totalAbs - p;
+        const dest2 = rat ? `<b>${esc(S.catMap.rateio.nome)}</b> <span class="mut">(não conta como gasto; fica a receber)</span>` : `<b>${esc(nomeOp(sel2))}</b>`;
+        prev.innerHTML = `• Sua parte: <b class="num">${brl(p)}</b> em <b>${esc(nomeOp(sel1))}</b><br>• Restante: <b class="num">${brl(resto)}</b> em ${dest2}`;
+      };
+      inp.oninput = atualizar;
+      sel1.onchange = atualizar;
+      sel2.onchange = atualizar;
+      chk.onchange = atualizar;
+      atualizar();
+      inp.focus();
+    },
   });
   if (!r) return;
   const parte = Math.abs(parseValor(r.parte, ','));
   if (!Number.isFinite(parte) || parte <= 0 || parte >= totalAbs) return toast('Informe um valor maior que zero e menor que o total.');
+
+  const parseCatSub = val => {
+    if (!val) return { cat: null, sub: null };
+    if (val.includes(':')) { const [c, s] = val.split(':'); return { cat: c, sub: s }; }
+    return { cat: val, sub: null };
+  };
+
   const sinal = Math.sign(t.valor) || -1;
-  t.valor = (totalAbs - parte) * sinal;
+  const resto = totalAbs - parte;
+  const d1 = parseCatSub(r.cat1);
+  const usarRateio = ehSaida && S.catMap.rateio && !!r.ehRateio;
+  const d2 = usarRateio ? { cat: 'rateio', sub: null } : parseCatSub(r.cat2);
+  const notaFinal = (r.nota || '').trim();
+
+  t.valor = parte * sinal;
+  t.cat = d1.cat;
+  t.sub = d1.sub;
+  t.catManual = true;
+  if (notaFinal) t.nota = notaFinal;
+
   const novoT = {
-    id: uid(), conta: t.conta, data: t.data, desc: (r.desc || t.desc).trim(),
-    valor: parte * sinal, fitid: '', cat: r.cat || null, catManual: true,
-    manual: t.manual, nota: t.nota || '',
+    id: uid(), conta: t.conta, data: t.data, desc: t.desc,
+    valor: resto * sinal, fitid: '', cat: d2.cat, sub: d2.sub, catManual: true,
+    manual: t.manual, nota: notaFinal || (usarRateio ? 'Rateio a receber de terceiros' : ''),
   };
   S.tx.push(novoT);
   await DB.gravar('tx', [t, novoT]);
   treinarModelo();
-  render(); toast('Lançamento dividido em duas partes');
+  render();
+  toast(`Dividido: ${brl(parte)} em ${nomeCatSub(d1.cat, d1.sub)} · ${brl(resto)} em ${nomeCatSub(d2.cat, d2.sub)}`);
 }
+
 async function editarTx(id) {
-  const novo = !id, t = novo ? { data: S.mes === mesAtual() ? hoje() : S.mes + '-01', desc: '', valor: 0, cat: null, conta: (await contaDinheiro()).id, manual: true, nota: '' } : S.tx.find(x => x.id === id);
+  const novo = !id, t = novo ? { data: S.mes === mesAtual() ? hoje() : S.mes + '-01', desc: '', valor: 0, cat: null, sub: null, conta: (await contaDinheiro()).id, manual: true, nota: '' } : S.tx.find(x => x.id === id);
   if (!t) return;
   const parc = !novo ? (t.parcela || detectarParcela(t.desc)) : null;
   const pred = !novo && !t.cat ? preverCategoria(t.desc, t.valor, S.contaMap[t.conta], t.data) : null;
   const dicaIA = pred && pred.cat && pred.conf >= 0.25 && S.catMap[pred.cat]
-    ? `<p class="mut" style="margin:-4px 0 0">✦ Sugestão inteligente: <b>${esc(S.catMap[pred.cat].nome)}</b> (${Math.round(pred.conf * 100)}%) <button type="button" class="lnk" id="btnUsarIA" data-catia="${esc(pred.cat)}">aplicar</button></p>`
+    ? `<p class="mut" style="margin:-4px 0 0">✦ Sugestão inteligente: <b>${esc(nomeCatSub(pred.cat, pred.sub))}</b> (${Math.round(pred.conf * 100)}%) <button type="button" class="lnk" id="btnUsarIA" data-catia="${esc(pred.cat)}" data-subia="${esc(pred.sub || '')}">aplicar</button></p>`
     : '';
   const opcoesAbate = '<option value="">Não (contar como entrada normal)</option>' + S.cats.filter(c => c.tipo === 'gasto').map(c => `<option value="${esc(c.id)}"${t.abaterCat === c.id ? ' selected' : ''}>${esc(c.nome)}</option>`).join('');
   const acoesExtras = !novo ? `<div class="row" style="margin-top:4px">
     <button type="button" class="btn sm" id="btnSplitTx">Dividir valor</button>
     ${parc && parc.atual < parc.total && t.valor < 0 ? `<button type="button" class="btn sm" id="btnProjTx">Projetar parcelas (${parc.atual + 1}/${parc.total} a ${parc.total}/${parc.total})</button>` : ''}
   </div>` : '';
+  const catInicial = S.catMap[t.cat] ? t.cat : '';
+  const subInicial = catInicial && S.subMap[catInicial]?.[t.sub] ? t.sub : '';
   const r = await dialogo({
     titulo: novo ? 'Lançamento manual' : 'Editar lançamento',
     desc: novo ? 'Para gastos em dinheiro ou qualquer coisa que não aparece no extrato.' : (t.projecao ? 'Parcela projetada automaticamente (será substituída quando o extrato real chegar).' : (t.manual ? '' : `Importado de ${S.contaMap[t.conta]?.nome || 'extrato'}`)),
+    cancelar: 'Voltar',
     extra: novo ? '' : 'Excluir',
     corpo: `<label>Descrição<input name="desc" required maxlength="120" value="${esc(t.desc)}"></label>
       <div class="grid2"><label>Tipo<select name="sinal"><option value="-1">Saída (gasto)</option><option value="1"${t.valor > 0 ? ' selected' : ''}>Entrada</option></select></label>
       <label>Valor (R$)<input name="valor" required inputmode="decimal" placeholder="0,00" value="${t.valor ? fmtNum.format(Math.abs(t.valor) / 100) : ''}"></label></div>
       <div class="grid2"><label>Data<input type="date" name="data" required value="${t.data}"></label>
       <label>Conta<select name="conta"${!t.manual ? ' disabled' : ''}>${S.contas.map(c => `<option value="${c.id}"${c.id === t.conta ? ' selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label></div>
-      <label id="lblCatTx">Categoria<select name="cat">${opcoesCat(S.catMap[t.cat] ? t.cat : '', 'Sem categoria')}</select></label>${dicaIA}
+      <label id="lblCatTx">Categoria<select name="cat">${opcoesCat(catInicial, 'Sem categoria')}</select></label>${dicaIA}
+      <label id="lblSubTx" hidden>Subcategoria<select name="sub"></select></label>
       <label id="lblAbateTx"${t.valor > 0 ? '' : ' hidden'}>Abater de um gasto (estorno / rachadinha)<select name="abaterCat">${opcoesAbate}</select></label>
       <label>Observação (opcional)<input name="nota" maxlength="120" value="${esc(t.nota || '')}"></label>${acoesExtras}`,
     aoAbrir: d => {
       if (novo) $('[name=desc]', d).focus(); else $('[name=cat]', d).focus();
-      const selSinal = $('[name=sinal]', d), lblAb = $('#lblAbateTx', d), selAb = $('[name=abaterCat]', d), lblCat = $('#lblCatTx', d);
+      const selSinal = $('[name=sinal]', d), lblAb = $('#lblAbateTx', d), selAb = $('[name=abaterCat]', d);
+      const lblCat = $('#lblCatTx', d), selCat = $('[name=cat]', d), lblSub = $('#lblSubTx', d), selSub = $('[name=sub]', d);
+      const syncSubs = (manterSub) => {
+        const ehEnt = selSinal.value === '1';
+        const abatendo = ehEnt && !!selAb.value;
+        const cid = selCat.value;
+        const subs = !abatendo && cid ? (S.catMap[cid]?.subs || []) : [];
+        lblSub.hidden = !subs.length;
+        selSub.innerHTML = subs.length ? opcoesSub(cid, manterSub || '') : '';
+      };
       const syncAbate = () => {
         const ehEnt = selSinal.value === '1';
         lblAb.hidden = !ehEnt;
         lblCat.hidden = ehEnt && !!selAb.value;
+        syncSubs(selSub.value);
       };
-      selSinal.onchange = syncAbate; selAb.onchange = syncAbate; syncAbate();
-      $('#btnUsarIA', d)?.addEventListener('click', e => { $('[name=cat]', d).value = e.target.dataset.catia; e.target.parentElement.remove(); });
+      selCat.onchange = () => syncSubs('');
+      selSinal.onchange = syncAbate;
+      selAb.onchange = syncAbate;
+      syncAbate();
+      syncSubs(subInicial);
+      $('#btnUsarIA', d)?.addEventListener('click', e => {
+        selCat.value = e.target.dataset.catia;
+        syncSubs(e.target.dataset.subia || '');
+        e.target.parentElement.remove();
+      });
       $('#btnSplitTx', d)?.addEventListener('click', () => { d.close('cancel'); dividirTx(t); });
       $('#btnProjTx', d)?.addEventListener('click', async () => {
         d.close('cancel');
@@ -1144,50 +1671,54 @@ async function editarTx(id) {
   }
   const v = parseValor(r.valor, ',');
   if (!Number.isFinite(v) || v === 0) { toast('Não entendi o valor. Use algo como 45,90'); return; }
-  const catAntes = t.cat, abateAntes = t.abaterCat || '';
+  const catAntes = t.cat, subAntes = t.sub || '', abateAntes = t.abaterCat || '';
   const ehEntrada = +r.sinal > 0;
   const abater = ehEntrada && r.abaterCat ? r.abaterCat : null;
+  const novaCat = abater ? null : (r.cat || null);
+  const novaSub = (novaCat && r.sub && S.subMap[novaCat]?.[r.sub]) ? r.sub : null;
   Object.assign(t, {
     desc: r.desc.trim(), valor: Math.abs(v) * +r.sinal, data: r.data || t.data,
-    cat: abater ? null : (r.cat || null), nota: (r.nota || '').trim(),
+    cat: novaCat, sub: novaSub, nota: (r.nota || '').trim(),
   });
   if (abater) t.abaterCat = abater; else delete t.abaterCat;
   const pNovo = detectarParcela(t.desc);
   if (pNovo) t.parcela = { atual: pNovo.atual, total: pNovo.total }; else delete t.parcela;
   if (t.manual && r.conta) t.conta = r.conta;
+  const mudouClassif = t.cat !== catAntes || (t.sub || '') !== subAntes || (t.abaterCat || '') !== abateAntes;
   if (novo) { t.id = uid(); t.fitid = ''; t.catManual = true; S.tx.push(t); }
-  else if (t.cat !== catAntes || (t.abaterCat || '') !== abateAntes) t.catManual = true;
+  else if (mudouClassif) t.catManual = true;
   await DB.gravar('tx', t);
-  const autoExtras = t.cat !== catAntes ? await reaplicarRegras() : 0;
+  const autoExtras = mudouClassif ? await reaplicarRegras() : 0;
   if (S.meta.exemplo === undefined && novo && !S.meta.primeiraImportacao) await DB.meta('primeiraImportacao', hoje());
   render();
-  if (!novo && !abater && t.cat && t.cat !== catAntes && !t.manual) await oferecerRegra(t);
+  if (!novo && !abater && t.cat && mudouClassif && !t.manual) await oferecerRegra(t);
   else toast(novo ? 'Lançamento adicionado' : `Lançamento salvo${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
 }
 async function oferecerRegra(t) {
-  const nomeCat = S.catMap[t.cat].nome;
-  const conta = txt => { const n = norm(txt); return n ? S.tx.filter(x => x.id !== t.id && !x.catManual && x.cat !== t.cat && norm(x.desc).includes(n)).length : 0; };
+  const destino = nomeCatSub(t.cat, t.sub);
+  const conta = txt => { const n = norm(txt); return n ? S.tx.filter(x => x.id !== t.id && !x.catManual && (x.cat !== t.cat || (x.sub || null) !== (t.sub || null)) && norm(x.desc).includes(n)).length : 0; };
   const r = await dialogo({
     titulo: 'Fazer isso sempre?',
-    desc: `Você colocou “${t.desc}” em ${nomeCat}. O Bolso pode fazer o mesmo sozinho nos próximos extratos.`,
+    desc: `Você colocou “${t.desc}” em ${destino}. O Bolso pode fazer o mesmo sozinho nos próximos extratos.`,
     ok: 'Criar regra', cancelar: 'Só desta vez',
     corpo: `<label>Quando a descrição contiver<input name="texto" required maxlength="60" value="${esc(sugerirTexto(t.desc))}"></label>
-      <p class="mut" style="margin:0">vai para <b>${esc(nomeCat)}</b>. Deixe só o trecho que se repete (o nome da loja ou da pessoa).</p>
+      <p class="mut" style="margin:0">vai para <b>${esc(destino)}</b>. Deixe só o trecho que se repete (o nome da loja ou da pessoa).</p>
       <label class="chk"><input type="checkbox" name="antigos" checked> <span id="rgN"></span></label>`,
     aoAbrir: d => { const i = $('[name=texto]', d), up = () => { const n = conta(i.value); $('#rgN').textContent = n ? `Aplicar também a ${plural(n, 'lançamento parecido que já está', 'lançamentos parecidos que já estão')} no app` : 'Aplicar também aos lançamentos parecidos que já estão no app'; }; i.oninput = up; up(); },
   });
   if (!r) return toast('Categoria salva');
   const texto = norm(r.texto); if (!texto) return;
-  await criarRegra(texto, t.cat, !!r.antigos);
-  render(); toast(`Regra criada: ${texto} → ${nomeCat}`);
+  await criarRegra(texto, t.cat, !!r.antigos, t.sub || null);
+  render(); toast(`Regra criada: ${texto} → ${destino}`);
 }
-async function criarRegra(texto, cat, aplicar) {
+async function criarRegra(texto, cat, aplicar, sub = null) {
   S.regras = S.regras.filter(x => !(x.texto === texto && !x.padrao));
-  const regra = { id: uid(), texto, cat, padrao: false, sinal: 0, modo: 'c' };
+  const subValida = sub && S.subMap[cat]?.[sub] ? sub : null;
+  const regra = { id: uid(), texto, cat, sub: subValida, padrao: false, sinal: 0, modo: 'c' };
   S.regras.push(regra); await DB.gravar('regras', regra); indexar();
   if (aplicar) {
-    const mud = S.tx.filter(x => !x.catManual && x.cat !== cat && norm(x.desc).includes(texto));
-    for (const x of mud) x.cat = cat;
+    const mud = S.tx.filter(x => !x.catManual && (x.cat !== cat || (x.sub || null) !== subValida) && norm(x.desc).includes(texto));
+    for (const x of mud) { x.cat = cat; x.sub = subValida; }
     if (mud.length) await DB.gravar('tx', mud);
     treinarModelo();
   }
@@ -1197,13 +1728,13 @@ async function editarConta(id) {
   const n = S.tx.filter(t => t.conta === id).length;
   const saldoStr = c.saldoIni ? fmtNum.format(c.saldoIni / 100) : '';
   const r = await dialogo({
-    titulo: 'Conta', extra: 'Excluir',
+    titulo: 'Conta', cancelar: 'Voltar', extra: 'Excluir',
     corpo: `<label>Nome<input name="nome" required maxlength="40" value="${esc(c.nome)}"></label>
       <label>Tipo<select name="tipo"><option value="conta">Conta corrente</option><option value="cartao"${c.tipo === 'cartao' ? ' selected' : ''}>Cartão de crédito</option><option value="dinheiro"${c.tipo === 'dinheiro' ? ' selected' : ''}>Dinheiro</option></select></label>
       <label id="lblFechamento"${c.tipo === 'cartao' ? '' : ' hidden'}>Dia de fechamento da fatura (opcional)<input type="number" name="fechamento" min="1" max="31" placeholder="Ex.: 25" value="${c.fechamento || ''}"></label>
       <div class="grid2" id="boxSaldoIni"${c.tipo === 'cartao' ? ' hidden' : ''}>
         <label>Saldo inicial (R$)<input name="saldoIni" inputmode="decimal" placeholder="0,00" value="${saldoStr}"></label>
-        <label>A partir de<input type="date" name="saldoData" value="${c.saldoData || ''}"></label>
+        <label>A partir de<input type="date" name="saldoData" value="${c.saldoData && c.saldoData !== '0000-01-01' ? c.saldoData : ''}"></label>
       </div>`,
     aoAbrir: d => {
       const sel = $('[name=tipo]', d);
@@ -1229,29 +1760,77 @@ async function editarConta(id) {
   if (c.tipo !== 'cartao' && Number.isFinite(sIni) && sIni !== 0) {
     c.saldoIni = sIni;
     c.saldoData = r.saldoData || '0000-01-01';
-  } else { delete c.saldoIni; delete c.saldoData; }
+    c.saldoManual = true;
+  } else { delete c.saldoIni; delete c.saldoData; delete c.saldoManual; }
   await DB.gravar('contas', c); indexar();
   await reaplicarRegras(); render();
 }
 async function editarCat(id) {
   const c = S.catMap[id]; if (!c) return;
   const fixa = CATS_FIXAS.includes(id), n = S.tx.filter(t => t.cat === id).length;
+  let subsTemp = (c.subs || []).map(s => ({ ...s }));
   const r = await dialogo({
-    titulo: 'Categoria', extra: fixa ? '' : 'Excluir',
-    desc: fixa ? 'Esta categoria é usada pelo próprio app, por isso só o nome pode mudar.' : '',
+    titulo: 'Categoria', cancelar: 'Voltar', extra: fixa ? '' : 'Excluir',
+    desc: fixa ? 'Esta categoria é usada pelo próprio app, por isso só o nome e as subcategorias podem mudar.' : '',
     corpo: `<label>Nome<input name="nome" required maxlength="40" value="${esc(c.nome)}"></label>
-      ${fixa ? '' : `<label>Tipo<select name="tipo">${Object.entries(TIPO_NOME).map(([k, v]) => `<option value="${k}"${c.tipo === k ? ' selected' : ''}>${v}${k === 'mov' ? ' como gasto nem entrada' : ''}</option>`).join('')}</select></label>`}`,
+      ${fixa ? '' : `<label>Tipo<select name="tipo">${Object.entries(TIPO_NOME).map(([k, v]) => `<option value="${k}"${c.tipo === k ? ' selected' : ''}>${v}${k === 'mov' ? ' como gasto nem entrada' : ''}</option>`).join('')}</select></label>`}
+      <div class="sub-box">
+        <span class="sub-box-tit">Subcategorias</span>
+        <ul class="sub-lista" id="subListaDlg"></ul>
+        <div class="row">
+          <input id="novaSubNome" placeholder="Nova subcategoria" maxlength="40">
+          <button type="button" class="btn sm" id="btnAddSub">Adicionar</button>
+        </div>
+      </div>`,
+    aoAbrir: d => {
+      const ul = $('#subListaDlg', d), inp = $('#novaSubNome', d), btn = $('#btnAddSub', d);
+      const desenharSubs = () => {
+        ul.innerHTML = subsTemp.length
+          ? subsTemp.map((s, idx) => `<li><span>${esc(s.nome)}</span><button type="button" class="x" data-delsub="${idx}" aria-label="Remover subcategoria">×</button></li>`).join('')
+          : '<li class="vazio-sub">Nenhuma subcategoria ainda.</li>';
+      };
+      const addSub = () => {
+        const nome = inp.value.trim();
+        if (!nome) return;
+        if (subsTemp.some(s => norm(s.nome) === norm(nome))) return toast('Já existe uma subcategoria com esse nome');
+        const baseId = norm(nome).toLowerCase().replace(/\s+/g, '_') || uid();
+        const subId = subsTemp.some(s => s.id === baseId) ? `${baseId}_${uid().slice(-3)}` : baseId;
+        subsTemp.push({ id: subId, nome });
+        inp.value = '';
+        desenharSubs();
+        inp.focus();
+      };
+      btn.onclick = addSub;
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addSub(); } };
+      ul.onclick = e => {
+        const b = e.target.closest('[data-delsub]');
+        if (!b) return;
+        subsTemp.splice(+b.dataset.delsub, 1);
+        desenharSubs();
+      };
+      desenharSubs();
+    },
   });
   if (!r) return;
   if (r._acao === 'extra') {
     if (!await confirmar(`Excluir “${c.nome}”?`, `${n ? plural(n, 'lançamento ficará', 'lançamentos ficarão') + ' sem categoria. ' : ''}As regras desta categoria também serão apagadas.`, 'Excluir')) return;
-    const mud = S.tx.filter(t => t.cat === id); for (const t of mud) { t.cat = null; t.catManual = false; }
+    const mud = S.tx.filter(t => t.cat === id); for (const t of mud) { t.cat = null; t.sub = null; t.catManual = false; }
     const rg = S.regras.filter(x => x.cat === id).map(x => x.id);
     S.regras = S.regras.filter(x => x.cat !== id); S.cats = S.cats.filter(x => x.id !== id);
     await DB.gravar('tx', mud); await DB.apagar('regras', rg); await DB.apagar('cats', id); indexar(); return render();
   }
-  c.nome = r.nome.trim() || c.nome; if (!fixa && r.tipo) { c.tipo = r.tipo; if (c.tipo !== 'gasto') c.orc = null; }
-  await DB.gravar('cats', c); indexar(); render();
+  c.nome = r.nome.trim() || c.nome;
+  if (!fixa && r.tipo) { c.tipo = r.tipo; if (c.tipo !== 'gasto') c.orc = null; }
+  c.subs = subsTemp;
+  const validIds = new Set(subsTemp.map(s => s.id));
+  const txLimpas = S.tx.filter(t => t.cat === id && t.sub && !validIds.has(t.sub));
+  for (const t of txLimpas) t.sub = null;
+  const rgLimpas = S.regras.filter(rg => rg.cat === id && rg.sub && !validIds.has(rg.sub));
+  for (const rg of rgLimpas) rg.sub = null;
+  await DB.gravar('cats', c);
+  if (txLimpas.length) await DB.gravar('tx', txLimpas);
+  if (rgLimpas.length) await DB.gravar('regras', rgLimpas);
+  indexar(); render(); toast('Categoria salva');
 }
 
 // ───────────────────────── cópia de segurança ─────────────────────────
@@ -1274,8 +1853,13 @@ async function restaurarCopia(arq) {
 }
 function exportarCSV() {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
-  const l = [...S.tx].sort((a, b) => a.data.localeCompare(b.data)).map(t => [dataBRa(t.data), q(t.desc), fmtNum.format(t.valor / 100).replace(/\./g, ''), q(S.catMap[t.cat]?.nome || (t.abaterCat ? `Abate: ${S.catMap[t.abaterCat]?.nome || ''}` : '')), q(S.contaMap[t.conta]?.nome || ''), q(t.nota || '')].join(';'));
-  baixar(`bolso-lancamentos-${hoje()}.csv`, '\ufeffData;Descrição;Valor;Categoria;Conta;Observação\r\n' + l.join('\r\n'), 'text/csv;charset=utf-8');
+  const l = [...S.tx].sort((a, b) => a.data.localeCompare(b.data)).map(t => [
+    dataBRa(t.data), q(t.desc), fmtNum.format(t.valor / 100).replace(/\./g, ''),
+    q(S.catMap[t.cat]?.nome || (t.abaterCat ? `Abate: ${S.catMap[t.abaterCat]?.nome || ''}` : '')),
+    q(t.cat && t.sub ? (S.subMap[t.cat]?.[t.sub]?.nome || '') : ''),
+    q(S.contaMap[t.conta]?.nome || ''), q(t.nota || ''),
+  ].join(';'));
+  baixar(`bolso-lancamentos-${hoje()}.csv`, '\ufeffData;Descrição;Valor;Categoria;Subcategoria;Conta;Observação\r\n' + l.join('\r\n'), 'text/csv;charset=utf-8');
 }
 async function apagarTudo(silencioso) {
   const tema = S.meta.tema, ocultarInst = S.meta.ocultarInstalar;
@@ -1323,10 +1907,47 @@ async function carregarExemplo() {
   }
   await importarLote({ conta: { chave: 'ex|ck', banco: 'Bradesco', tipo: 'conta', nome: 'Bradesco · conta final 4821' }, itens: ck }, { semPares: true });
   await importarLote({ conta: { chave: 'ex|cc', banco: 'Santander', tipo: 'cartao', nome: 'Santander · cartão final 7730' }, itens: cc }, { semPares: true });
-  const orc = { moradia: 220000, mercado: 90000, restaurantes: 40000, transporte: 35000, saude: 15000, cuidados: 30000, assinaturas: 8000, compras: 25000, pets: 12000 };
+  const orc = { moradia: 220000, alimentacao: 130000, transporte: 35000, saude: 15000, cuidados: 30000, assinaturas: 8000, compras: 25000, pets: 12000 };
   for (const [id, v] of Object.entries(orc)) if (S.catMap[id]) S.catMap[id].orc = v;
   await DB.gravar('cats', S.cats); await DB.meta('exemplo', true);
   S.mes = mesAtual(); S.histFim = null; ir('painel');
+}
+
+// ───────────────────────── estilos v1.6.0 (mobile KPIs, 2 linhas, rateio) ─────────────────────────
+function injetarEstilosV16() {
+  if ($('#bolso-v16-style')) return;
+  const st = document.createElement('style');
+  st.id = 'bolso-v16-style';
+  st.textContent = `
+    #kEntrou, #kSaiu, #kSobra, #kPrev { font-size: clamp(1.05rem, 4.5vw, 1.5rem); letter-spacing: -0.02em; }
+    #kEntrou.val-longo, #kSaiu.val-longo { font-size: clamp(0.95rem, 3.85vw, 1.35rem); }
+    @media (max-width: 440px) {
+      .kpis { gap: 8px; }
+      .kpis > * { padding: 12px 10px; min-width: 0; }
+    }
+    #lanc li .desc {
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.28;
+    }
+    .qchip-rateio {
+      background: rgba(61, 126, 166, 0.22);
+      border-color: rgba(61, 126, 166, 0.55);
+      color: inherit;
+      font-weight: 600;
+    }
+    .split-preview {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(127, 127, 127, 0.12);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+  `;
+  document.head.append(st);
 }
 
 // ───────────────────────── tema, privacidade e instalação ─────────────────────────
@@ -1369,11 +1990,20 @@ function ligar() {
       e.stopPropagation();
       const t = S.tx.find(x => x.id === qChip.dataset.quicktx);
       if (!t) return;
-      t.cat = qChip.dataset.quickcat; t.catManual = true;
+      t.cat = qChip.dataset.quickcat;
+      t.sub = qChip.dataset.quicksub || null;
+      t.catManual = true;
       await DB.gravar('tx', t);
       const autoExtras = await reaplicarRegras();
       render();
-      toast(`Classificado em ${S.catMap[t.cat]?.nome || 'categoria'}${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
+      toast(`Classificado em ${nomeCatSub(t.cat, t.sub)}${autoExtras ? ` (+${plural(autoExtras, 'parecido atualizado', 'parecidos atualizados')})` : ''}`);
+      return;
+    }
+    const abChip = e.target.closest('[data-abatetx]');
+    if (abChip) {
+      e.stopPropagation();
+      const t = S.tx.find(x => x.id === abChip.dataset.abatetx);
+      if (t) await abaterTxRapido(t);
       return;
     }
     const ocFixa = e.target.closest('[data-ocultarfixa]');
@@ -1385,13 +2015,20 @@ function ligar() {
       render();
       return;
     }
-    const el = e.target.closest('[data-go],[data-revisar],[data-projparc],[data-tx],[data-cat],[data-filtraconta],[data-mes],[data-conta],[data-catedit],[data-del-regra],[data-sug]');
+    const el = e.target.closest('[data-go],[data-revisar],[data-projparc],[data-tx],[data-sub],[data-cat],[data-filtraconta],[data-mes],[data-conta],[data-catedit],[data-del-regra],[data-sug]');
     if (!el) return;
     const d = el.dataset;
     if (d.go) { if (d.go === 'lancamentos' && el.classList.contains('lnk')) { $('#fSem').checked = false; $('#fCat').value = ''; $('#busca').value = ''; } ir(d.go); }
     else if (d.revisar) revisar();
     else if (d.projparc) { const n = await projetarParcelas(ultimosParcelados); el.disabled = true; toast(n ? `${plural(n, 'parcela futura projetada', 'parcelas futuras projetadas')}` : 'Parcelas futuras já projetadas'); }
     else if (d.tx) editarTx(d.tx);
+    else if (d.sub) {
+      e.stopPropagation();
+      $('#busca').value = ''; $('#fConta').value = ''; $('#fSem').checked = false;
+      S.view = 'lancamentos'; rLanc();
+      $('#fCat').value = `${d.cat}:${d.sub}`;
+      ir('lancamentos');
+    }
     else if (d.cat) { $('#busca').value = ''; $('#fConta').value = ''; $('#fSem').checked = false; S.view = 'lancamentos'; rLanc(); $('#fCat').value = d.cat; ir('lancamentos'); }
     else if (d.filtraconta) { $('#busca').value = ''; $('#fCat').value = ''; $('#fSem').checked = false; S.view = 'lancamentos'; rLanc(); $('#fConta').value = d.filtraconta; ir('lancamentos'); }
     else if (d.mes) { S.mes = d.mes; if (!el.closest('#hist')) S.histFim = null; render(); }
@@ -1433,16 +2070,17 @@ function ligar() {
   $('#tema').onchange = async e => { await DB.meta('tema', e.target.value); aplicarTema(); };
   $('#btnInstalar').onclick = async () => { if (!promptInstalar) return; promptInstalar.prompt(); await promptInstalar.userChoice; promptInstalar = null; rAjustes(); };
   if ($('#btnOcultarInstalar')) $('#btnOcultarInstalar').onclick = async () => { await DB.meta('ocultarInstalar', true); rAjustes(); };
+  $('#rCat').onchange = syncSubRegra;
   $('#rAdd').onclick = async () => {
-    const texto = norm($('#rTexto').value), cat = $('#rCat').value;
+    const texto = norm($('#rTexto').value), cat = $('#rCat').value, sub = !$('#rSub').hidden ? ($('#rSub').value || null) : null;
     if (texto.length < 2) return toast('Escreva o texto que aparece na descrição');
-    await criarRegra(texto, cat, false); const n = await reaplicarRegras(); $('#rTexto').value = ''; render();
+    await criarRegra(texto, cat, false, sub); const n = await reaplicarRegras(); $('#rTexto').value = ''; render();
     toast(`Regra criada${n ? ` · ${plural(n, 'lançamento reclassificado', 'lançamentos reclassificados')}` : ''}`);
   };
   $('#cAdd').onclick = async () => {
     const nome = $('#cNome').value.trim(); if (!nome) return toast('Dê um nome para a categoria');
     if (S.cats.some(c => norm(c.nome) === norm(nome))) return toast('Já existe uma categoria com esse nome');
-    const c = { id: uid(), nome, tipo: $('#cTipo').value, ordem: Math.max(0, ...S.cats.map(x => x.ordem || 0)) + 1, orc: null };
+    const c = { id: uid(), nome, tipo: $('#cTipo').value, ordem: Math.max(0, ...S.cats.map(x => x.ordem || 0)) + 1, orc: null, subs: [] };
     S.cats.push(c); await DB.gravar('cats', c); indexar(); $('#cNome').value = ''; render(); toast('Categoria criada');
   };
   $('#bkSalvar').onclick = salvarCopia;
@@ -1468,9 +2106,97 @@ async function carregar() {
   [S.tx, S.contas, S.cats, S.regras, S.meta] = await Promise.all([DB.todos('tx'), DB.todos('contas'), DB.todos('cats'), DB.todos('regras'), DB.metaTudo()]);
   S.cats.sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
   indexar();
-  if (!S.cats.length) await semear();
+  if (!S.cats.length) {
+    await semear();
+  } else if (!S.meta.v16Migracao) {
+    // 1. Garante categoria Alimentação unificada
+    let catAlim = S.catMap.alimentacao;
+    if (!catAlim) {
+      const idxIns = S.cats.findIndex(c => c.id === 'mercado' || c.id === 'restaurantes');
+      catAlim = { id: 'alimentacao', nome: 'Alimentação', tipo: 'gasto', ordem: 1, orc: null, subs: SUBS_ALIMENTACAO.map(s => ({ ...s })) };
+      if (idxIns >= 0) S.cats.splice(idxIns, 0, catAlim);
+      else S.cats.push(catAlim);
+    }
+    const oldMerc = S.catMap.mercado;
+    const oldRest = S.catMap.restaurantes;
+    if (!catAlim.orc && ((oldMerc?.orc || 0) + (oldRest?.orc || 0)) > 0) {
+      catAlim.orc = (oldMerc?.orc || 0) + (oldRest?.orc || 0);
+    }
+
+    // 2. Migra lançamentos antigos de mercado/restaurantes -> alimentação e moradia:streaming -> assinaturas:streaming
+    const txMig = [];
+    for (const t of S.tx) {
+      let alt = false;
+      if (t.cat === 'mercado') {
+        t.cat = 'alimentacao'; t.sub = 'mercado'; alt = true;
+      } else if (t.cat === 'restaurantes') {
+        const ehDeliv = /\b(IFOOD|IFD|RAPPI|UBER EATS|UBEREATS|ZE DELIVERY|AIQFOME|DELIVERY)\b/.test(norm(t.desc));
+        t.cat = 'alimentacao'; t.sub = ehDeliv ? 'delivery' : 'restaurante'; alt = true;
+      } else if (t.cat === 'moradia' && t.sub === 'streaming') {
+        t.cat = 'assinaturas'; t.sub = 'streaming'; alt = true;
+      }
+      if (t.abaterCat === 'mercado' || t.abaterCat === 'restaurantes') {
+        t.abaterCat = 'alimentacao'; alt = true;
+      }
+      if (alt) txMig.push(t);
+    }
+    if (txMig.length) await DB.gravar('tx', txMig);
+
+    // 3. Remove categorias antigas mercado/restaurantes e adiciona Seguros + Rateio
+    S.cats = S.cats.filter(c => c.id !== 'mercado' && c.id !== 'restaurantes');
+    await DB.apagar('cats', ['mercado', 'restaurantes']);
+
+    if (!S.cats.some(c => c.id === 'seguros')) {
+      const idxPix = S.cats.findIndex(c => c.id === 'pix');
+      const catSeg = { id: 'seguros', nome: 'Seguros', tipo: 'gasto', ordem: 0, orc: null, subs: SUBS_SEGUROS.map(s => ({ ...s })) };
+      if (idxPix >= 0) S.cats.splice(idxPix, 0, catSeg); else S.cats.push(catSeg);
+    }
+    if (!S.cats.some(c => c.id === 'rateio')) {
+      const idxInv = S.cats.findIndex(c => c.id === 'invest');
+      const catRat = { id: 'rateio', nome: 'Rateio / Terceiros', tipo: 'mov', ordem: 0, orc: null, subs: [] };
+      if (idxInv >= 0) S.cats.splice(idxInv, 0, catRat); else S.cats.push(catRat);
+    }
+
+    // 4. Atualiza subcategorias padrão em todas as categorias
+    for (const c of S.cats) {
+      const padSubs = SUBS_PADRAO_POR_CAT[c.id];
+      if (!padSubs) continue;
+      let atuais = (c.subs || []).filter(s => !(c.id === 'moradia' && s.id === 'streaming'));
+      const ids = new Set(atuais.map(s => s.id));
+      for (const s of padSubs) if (!ids.has(s.id)) atuais.push({ ...s });
+      c.subs = atuais;
+    }
+    S.cats.forEach((c, i) => { c.ordem = i; });
+    await DB.gravar('cats', S.cats);
+
+    // 5. Atualiza regras personalizadas antigas e renova regras padrão
+    const minhas = S.regras.filter(r => !r.padrao);
+    for (const r of minhas) {
+      if (r.cat === 'mercado') { r.cat = 'alimentacao'; r.sub = 'mercado'; }
+      else if (r.cat === 'restaurantes') {
+        const ehDeliv = /\b(IFOOD|IFD|RAPPI|UBER EATS|UBEREATS|ZE DELIVERY|AIQFOME|DELIVERY)\b/.test(r.texto);
+        r.cat = 'alimentacao'; r.sub = ehDeliv ? 'delivery' : 'restaurante';
+      } else if (r.cat === 'moradia' && r.sub === 'streaming') {
+        r.cat = 'assinaturas'; r.sub = 'streaming';
+      }
+    }
+    if (minhas.length) await DB.gravar('regras', minhas);
+
+    const antigasPadrao = S.regras.filter(r => r.padrao).map(r => r.id);
+    const novasPadrao = regrasPadrao();
+    if (antigasPadrao.length) await DB.apagar('regras', antigasPadrao);
+    await DB.gravar('regras', novasPadrao);
+    S.regras = [...minhas, ...novasPadrao];
+
+    await DB.meta('subcatsV1', true);
+    await DB.meta('segurosV1', true);
+    await DB.meta('v16Migracao', true);
+    indexar();
+    await reaplicarRegras();
+  }
 }
 async function iniciar() {
+  injetarEstilosV16();
   try { await DB.abrir(); await carregar(); }
   catch (e) {
     console.error(e);

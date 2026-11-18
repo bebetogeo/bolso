@@ -5,75 +5,99 @@
 /* 1. Variáveis e Temas (Claro / Escuro / Automático)
    -------------------------------------------------------------------------- */
 :root {
-  --bg: #f4f6f6;
-  --card: #ffffff;
-  --card-alt: #eef2f2;
-  --fg: #182222;
-  --ink: #182222;
-  --mut: #5e6e6e;
-  --borda: #dce3e3;
-  --topo: #0f5257;
-  --topo-fg: #ffffff;
-  --pri: #0f5257;
-  --pri-fg: #ffffff;
-  --pri-suave: rgba(15, 82, 87, 0.11);
-  --pos: #1e824c;
-  --neg: #c0392b;
-  --aviso-bg: #fdf6e7;
-  --aviso-bd: #edd49a;
-  --aviso-fg: #6b4c12;
-  --bar-1: #0f5257;
-  --bar-2: #2e9e66;
-  --sombra: 0 2px 10px rgba(15, 35, 36, 0.05);
-  --raio: 14px;
+  --bg: #F1EFE8;
+  --card: #FFFFFF;
+  --card-alt: #F1EFE8;
+  --fg: #2C2C2A;
+  --ink: #2C2C2A;
+  --mut: #5F5E5A;
+  --borda: #E3E1D8;
+  --topo: #F1EFE8;
+  --topo-fg: #2C2C2A;
+  --pri: #534AB7;
+  --pri-fg: #EEEDFE;
+  --pri-suave: rgba(83, 74, 183, 0.12);
+  --pos: #0F6E56;
+  --neg: #A32D2D;
+  --aviso-bg: #FAEEDA;
+  --aviso-bd: #FAC775;
+  --aviso-fg: #633806;
+  --bar-1: #534AB7;
+  --bar-2: #1D9E75;
+  --sombra: none;
+  --raio: 20px;
+  --saldo-bg: #534AB7; --saldo-fg: #EEEDFE; --saldo-mut: #CECBF6; --spark: #AFA9EC;
+  --ent-bg: #E1F5EE; --ent-fg: #085041; --ent-mut: #0F6E56;
+  --sai-bg: #FAECE7; --sai-fg: #712B13; --sai-mut: #993C1D;
+  --pneg-bg: #F5C4B3; --pneg-fg: #712B13; --ppos-bg: #9FE1CB; --ppos-fg: #04342C;
+  --entrou: #9FE1CB; --sel: #F1EFE8; --trk: #F1EFE8; --lin: #E3E1D8;
+  --c1: #534AB7; --c2: #EF9F27; --c3: #1D9E75; --c4: #D4537E; --c5: #378ADD; --c6: #D85A30; --c7: #639922;
+  --c-sem: #B4B2A9; --c-out: #5F5E5A;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #111514;
-    --card: #1a1f1e;
-    --card-alt: #232928;
-    --fg: #eef2f1;
-    --ink: #eef2f1;
-    --mut: #8e9b99;
-    --borda: #2b3331;
-    --topo: #0f292b;
-    --topo-fg: #f2f6f6;
-    --pri: #23868d;
-    --pri-fg: #ffffff;
-    --pri-suave: rgba(35, 134, 141, 0.2);
-    --pos: #4cc38a;
-    --neg: #e56b6f;
-    --aviso-bg: #292215;
-    --aviso-bd: #4c3d1f;
-    --aviso-fg: #f0d7a2;
-    --bar-1: #2a9d8f;
-    --bar-2: #4cc38a;
-    --sombra: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --bg: #141416;
+    --card: #232325;
+    --card-alt: #2E2E31;
+    --fg: #F1EFE8;
+    --ink: #F1EFE8;
+    --mut: #B4B2A9;
+    --borda: #3A3A3D;
+    --topo: #141416;
+    --topo-fg: #F1EFE8;
+    --pri: #7F77DD;
+    --pri-fg: #1C1A3D;
+    --pri-suave: rgba(127, 119, 221, 0.2);
+    --pos: #5DCAA5;
+    --neg: #F09595;
+    --aviso-bg: #412402;
+    --aviso-bd: #633806;
+    --aviso-fg: #FAC775;
+    --bar-1: #7F77DD;
+    --bar-2: #5DCAA5;
+    --sombra: none;
+    --saldo-bg: #3C3489; --saldo-fg: #EEEDFE; --saldo-mut: #AFA9EC; --spark: #AFA9EC;
+    --ent-bg: #04342C; --ent-fg: #9FE1CB; --ent-mut: #5DCAA5;
+    --sai-bg: #4A1B0C; --sai-fg: #F5C4B3; --sai-mut: #F0997B;
+    --pneg-bg: #712B13; --pneg-fg: #F5C4B3; --ppos-bg: #085041; --ppos-fg: #9FE1CB;
+    --entrou: #9FE1CB; --sel: #33333A; --trk: #3A3A3D; --lin: #3A3A3D;
+    --c1: #7F77DD; --c2: #EF9F27; --c3: #1D9E75; --c4: #ED93B1; --c5: #85B7EB; --c6: #F0997B; --c7: #97C459;
+    --c-sem: #888780; --c-out: #5F5E5A;
+    color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #111514;
-  --card: #1a1f1e;
-  --card-alt: #232928;
-  --fg: #eef2f1;
-  --ink: #eef2f1;
-  --mut: #8e9b99;
-  --borda: #2b3331;
-  --topo: #0f292b;
-  --topo-fg: #f2f6f6;
-  --pri: #23868d;
-  --pri-fg: #ffffff;
-  --pri-suave: rgba(35, 134, 141, 0.2);
-  --pos: #4cc38a;
-  --neg: #e56b6f;
-  --aviso-bg: #292215;
-  --aviso-bd: #4c3d1f;
-  --aviso-fg: #f0d7a2;
-  --bar-1: #2a9d8f;
-  --bar-2: #4cc38a;
-  --sombra: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --bg: #141416;
+  --card: #232325;
+  --card-alt: #2E2E31;
+  --fg: #F1EFE8;
+  --ink: #F1EFE8;
+  --mut: #B4B2A9;
+  --borda: #3A3A3D;
+  --topo: #141416;
+  --topo-fg: #F1EFE8;
+  --pri: #7F77DD;
+  --pri-fg: #1C1A3D;
+  --pri-suave: rgba(127, 119, 221, 0.2);
+  --pos: #5DCAA5;
+  --neg: #F09595;
+  --aviso-bg: #412402;
+  --aviso-bd: #633806;
+  --aviso-fg: #FAC775;
+  --bar-1: #7F77DD;
+  --bar-2: #5DCAA5;
+  --sombra: none;
+  --saldo-bg: #3C3489; --saldo-fg: #EEEDFE; --saldo-mut: #AFA9EC; --spark: #AFA9EC;
+  --ent-bg: #04342C; --ent-fg: #9FE1CB; --ent-mut: #5DCAA5;
+  --sai-bg: #4A1B0C; --sai-fg: #F5C4B3; --sai-mut: #F0997B;
+  --pneg-bg: #712B13; --pneg-fg: #F5C4B3; --ppos-bg: #085041; --ppos-fg: #9FE1CB;
+  --entrou: #9FE1CB; --sel: #33333A; --trk: #3A3A3D; --lin: #3A3A3D;
+  --c1: #7F77DD; --c2: #EF9F27; --c3: #1D9E75; --c4: #ED93B1; --c5: #85B7EB; --c6: #F0997B; --c7: #97C459;
+  --c-sem: #888780; --c-out: #5F5E5A;
+  color-scheme: dark;
 }
 
 /* 2. Reset, Tipografia e Modo Privacidade
@@ -1544,3 +1568,78 @@ details.conta-tab[open] > summary span::after { content: ' ▾'; }
 .cb-ultima { border-top: 1px solid var(--borda); padding-top: 5px; margin-top: 3px; }
 :root { --entrou: #a9dcbd; }
 .hbars .e { background: var(--entrou); }
+
+/* ==========================================================================
+   Tela do mês, estilo Vivo (v2.0)
+   ========================================================================== */
+.painel-grid { gap: 10px; }
+.cd { background: var(--card); color: var(--fg); border: 0; border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cd-lb { font-size: 0.75rem; color: var(--mut); }
+.cd-tt { font-size: 0.95rem; font-weight: 600; margin: 0; }
+.cd-top { display: flex; justify-content: space-between; gap: 8px; }
+button.cd { appearance: none; font: inherit; text-align: left; cursor: pointer; }
+
+.cd-saldo { background: var(--saldo-bg); color: var(--saldo-fg); gap: 6px; }
+.cd-saldo .cd-lb { color: var(--saldo-mut); }
+.saldo-big { font-size: clamp(1.9rem, 9vw, 2.3rem); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+.pilula { align-self: flex-start; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
+.p-neg { background: var(--pneg-bg); color: var(--pneg-fg); }
+.p-pos { background: var(--ppos-bg); color: var(--ppos-fg); }
+.spark { width: 100%; height: 40px; display: block; margin-top: 4px; }
+.spark polyline { fill: none; stroke: var(--spark); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+
+.es-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.cd-ent { background: var(--ent-bg); color: var(--ent-fg); }
+.cd-ent .cd-lb { color: var(--ent-mut); }
+.cd-sai { background: var(--sai-bg); color: var(--sai-fg); }
+.cd-sai .cd-lb { color: var(--sai-mut); }
+.es-v { font-size: 1.3rem; font-weight: 600; white-space: nowrap; }
+
+#contasStrip { gap: 0; }
+.cr { appearance: none; background: none; border: 0; border-top: 1px solid var(--lin); color: inherit; font: inherit; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; cursor: pointer; }
+.cd-lb + .cr { border-top: 0; padding-top: 6px; }
+.cr small { display: block; font-size: 0.72rem; color: var(--mut); }
+.cr small.ok { color: var(--pos); }
+.cr small.ng { color: var(--neg); }
+.cr-v { font-size: 1rem; font-weight: 600; white-space: nowrap; }
+
+.leg-mini { display: flex; gap: 14px; font-size: 0.75rem; color: var(--mut); margin-top: 2px; }
+.leg-mini span { display: flex; align-items: center; gap: 6px; }
+.mini-e { display: block; width: 7px; height: 13px; border-radius: 2px; background: var(--entrou); }
+.mini-s { display: flex; flex-direction: column; width: 7px; height: 13px; border-radius: 2px; overflow: hidden; }
+.mini-s b { flex: 1; display: block; }
+.hist2 { display: flex; justify-content: space-around; align-items: flex-end; margin-top: 12px; }
+.mc { appearance: none; background: transparent; border: 0; color: inherit; font: inherit; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px 6px; border-radius: 12px; cursor: pointer; }
+.mc.on { background: var(--sel); }
+.mc .pr { display: flex; align-items: flex-end; gap: 4px; height: 92px; }
+.mc .en { display: block; width: 13px; border-radius: 5px 5px 2px 2px; background: var(--entrou); }
+.mc .st { display: flex; flex-direction: column-reverse; width: 20px; border-radius: 5px 5px 2px 2px; overflow: hidden; }
+.mc .st i { display: block; width: 100%; }
+.mc .mm { font-size: 0.75rem; text-transform: lowercase; }
+.mc .dl { font-size: 0.7rem; font-weight: 600; }
+.okc { color: var(--pos); }
+.ngc { color: var(--neg); }
+.res-mes { background: var(--sel); border-radius: 14px; padding: 8px 12px; margin-top: 8px; }
+.res-mes p { margin: 0; font-size: 0.88rem; }
+.res-mes .cd-lb { margin-top: 2px; }
+
+.cd-triagem { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 0.9rem; }
+.cd-triagem .btn { background: var(--pri); color: var(--pri-fg); border: 0; border-radius: 99px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; }
+
+.barra-cats { display: flex; height: 12px; border-radius: 99px; overflow: hidden; margin: 8px 0 4px; }
+.barra-cats span { display: block; height: 100%; }
+#cardCats .ct { padding: 9px 0 8px; border-top: 1px solid var(--lin); cursor: pointer; }
+#cardCats .ct:first-of-type { border-top: 0; }
+.cth { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.9rem; }
+.cth b { font-weight: 600; }
+.bol { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.seta-c { color: var(--mut); font-size: 0.75rem; }
+#cardCats .trk { height: 6px; border-radius: 99px; background: var(--trk); margin: 6px 0 4px; overflow: hidden; }
+#cardCats .trk i { display: block; height: 100%; border-radius: 99px; }
+.ctm { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--mut); }
+#cardCats .subs { display: none; margin: 6px 0 2px 8px; padding-left: 10px; border-left: 2px solid; font-size: 0.82rem; color: var(--mut); }
+#cardCats .ct.open .subs { display: block; }
+#cardCats .subs div { display: flex; justify-content: space-between; padding: 3px 0; }
+#cardOrc .cd-tt { font-size: 0.95rem; }
+.cd-saldo .saldo-big { color: var(--saldo-fg); }
+#cardCats .barra-cats + .ct { border-top: 0; }

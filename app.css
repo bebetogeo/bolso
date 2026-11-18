@@ -421,10 +421,6 @@ header.top {
   line-height: 1.2;
 }
 
-#kEntrou.val-longo, #kSaiu.val-longo {
-  font-size: clamp(0.95rem, 3.85vw, 1.35rem);
-}
-
 .kpi .sub {
   font-size: 0.82rem;
   color: var(--mut);
@@ -491,6 +487,22 @@ header.top {
   font-size: 0.72rem;
   font-weight: 600;
   color: #d99b26;
+  text-align: right;
+}
+
+.conta-pill > .csub {
+  font-size: 0.78rem;
+  color: var(--mut);
+}
+
+.nota-cartao {
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.aviso .row {
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* Card de Rateio pendente */

@@ -1,98 +1,52 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.7.3';
+  const VERSAO = '1.8.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
-  const REGRAS_PADRAO = [
-    { texto: 'UBER', catId: 'transporte', subId: 'app' },
-    { texto: '99APP', catId: 'transporte', subId: 'app' },
-    { texto: '99 POP', catId: 'transporte', subId: 'app' },
-    { texto: '99 RIDE', catId: 'transporte', subId: 'app' },
-    { texto: 'IPIRANGA', catId: 'transporte', subId: 'combustivel' },
-    { texto: 'SHELL', catId: 'transporte', subId: 'combustivel' },
-    { texto: 'POSTO', catId: 'transporte', subId: 'combustivel' },
-    { texto: 'SEM PARAR', catId: 'transporte', subId: 'pedagio' },
-    { texto: 'VELOE', catId: 'transporte', subId: 'pedagio' },
-    { texto: 'IFOOD', catId: 'alimentacao', subId: 'delivery' },
-    { texto: 'RAPPI', catId: 'alimentacao', subId: 'delivery' },
-    { texto: 'SUPERMERCADO', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'CARREFOUR', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'PAO DE ACUCAR', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'ASSAI', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'ATACADAO', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'SACOLAO', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'MERCADO', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'GRANEL', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'CARNE', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'PANIFICADORA', catId: 'alimentacao', subId: 'mercado' },
-    { texto: 'PADARIA', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'RESTAURANTE', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'LANCHONETE', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'SORVETERIA', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'MARMITARIA', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'CAFE', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'BAR ', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'CHOPP', catId: 'alimentacao', subId: 'restaurante' },
-    { texto: 'DROGASIL', catId: 'saude', subId: 'farmacia' },
-    { texto: 'DROGA RAIA', catId: 'saude', subId: 'farmacia' },
-    { texto: 'DROGA ', catId: 'saude', subId: 'farmacia' },
-    { texto: 'RAIA', catId: 'saude', subId: 'farmacia' },
-    { texto: 'PACHECO', catId: 'saude', subId: 'farmacia' },
-    { texto: 'ARAUJO', catId: 'saude', subId: 'farmacia' },
-    { texto: 'FARMACIA', catId: 'saude', subId: 'farmacia' },
-    { texto: 'UNIMED', catId: 'saude', subId: 'plano' },
-    { texto: 'SMART FIT', catId: 'saude', subId: 'academia' },
-    { texto: 'ACADEMIA', catId: 'saude', subId: 'academia' },
-    { texto: 'NETFLIX', catId: 'assinaturas', subId: 'streaming' },
-    { texto: 'SPOTIFY', catId: 'assinaturas', subId: 'streaming' },
-    { texto: 'AMAZON PRIME', catId: 'assinaturas', subId: 'streaming' },
-    { texto: 'AMAZONPRIME', catId: 'assinaturas', subId: 'streaming' },
-    { texto: 'HBOMAX', catId: 'assinaturas', subId: 'streaming' },
-    { texto: 'YOUTUBE', catId: 'assinaturas', subId: 'streaming' },
-    { texto: 'APPLE.COM', catId: 'assinaturas', subId: 'software' },
-    { texto: 'GOOGLE *', catId: 'assinaturas', subId: 'software' },
-    { texto: 'CEMIG', catId: 'moradia', subId: 'energia' },
-    { texto: 'ENEL', catId: 'moradia', subId: 'energia' },
-    { texto: 'COPASA', catId: 'moradia', subId: 'agua' },
-    { texto: 'SABESP', catId: 'moradia', subId: 'agua' },
-    { texto: 'VIVO', catId: 'moradia', subId: 'internet' },
-    { texto: 'CLARO', catId: 'moradia', subId: 'internet' },
-    { texto: 'TIM ', catId: 'moradia', subId: 'internet' },
-    { texto: 'CONDOMINIO', catId: 'moradia', subId: 'aluguel' },
-    { texto: 'ALUGUEL', catId: 'moradia', subId: 'aluguel' },
-    { texto: 'MERCADO LIVRE', catId: 'compras', subId: 'online' },
-    { texto: 'AMAZON.COM', catId: 'compras', subId: 'online' },
-    { texto: 'AMAZON COM BR', catId: 'compras', subId: 'online' },
-    { texto: 'SHOPEE', catId: 'compras', subId: 'online' },
-    { texto: 'SHPP BRASIL', catId: 'compras', subId: 'online' },
-    { texto: 'PAGAMENTO DE FATURA', catId: 'transf', subId: '' },
-    { texto: 'PAGAMENTO FATURA', catId: 'transf', subId: '' },
-    { texto: 'PAGTO FATURA', catId: 'transf', subId: '' },
-    { texto: 'PAGAMENTO DE CARTAO', catId: 'transf', subId: '' },
-    { texto: 'PAGAMENTO CARTAO', catId: 'transf', subId: '' },
-    { texto: 'DEBITO AUTOMATICO CARTAO', catId: 'transf', subId: '' },
-    { texto: 'DEBITO CARTAO', catId: 'transf', subId: '' },
-    { texto: 'FATURA CARTAO', catId: 'transf', subId: '' },
-    { texto: 'FATURA XP', catId: 'transf', subId: '' },
-    { texto: 'OUROCARD', catId: 'transf', subId: '' },
-    { texto: 'PIX-ENVIO DEVOLVIDO', catId: 'transf', subId: '' },
-    { texto: 'PIX - REJEITADO', catId: 'transf', subId: '' },
-    { texto: 'DEVOLUCAO PIX', catId: 'transf', subId: '' },
-    { texto: 'ESTORNO', catId: 'transf', subId: '' },
-    { texto: 'BB RENDE FACIL', catId: 'transf', subId: '' },
-    { texto: 'RENDE FACIL', catId: 'transf', subId: '' },
-    { texto: 'RESGATE', catId: 'transf', subId: '' },
-    { texto: 'APLICACAO', catId: 'transf', subId: '' },
-    { texto: 'APLIC.INVEST', catId: 'transf', subId: '' },
-    { texto: 'RESG.INVEST', catId: 'transf', subId: '' },
-    { texto: 'RENDIMENTO AUTOMATICO', catId: 'rendimentos', subId: '' },
-    { texto: 'JUROS SOBRE CAPITAL', catId: 'rendimentos', subId: '' },
-    { texto: 'DIVIDENDO', catId: 'rendimentos', subId: '' },
-    { texto: 'SALARIO', catId: 'salario', subId: '' },
-    { texto: 'PRO LABORE', catId: 'salario', subId: '' }
-  ];
+  // Regras embutidas. O texto casa no começo de uma palavra ("UBER" pega "DL*UBERRIDES");
+  // com "=" no fim, só a palavra inteira ("MERCADO=" não pega "MERCADOPAGO").
+  // As mais longas são testadas primeiro, então "MERCADO LIVRE" ganha de "MERCADO".
+  const REGRAS_POR_CAT = {
+    'transporte:app': 'UBER|99APP|99 POP|99 RIDE|99 TAXI|CABIFY',
+    'transporte:combustivel': 'IPIRANGA|SHELL|POSTO=|AUTO POSTO|PETROBRAS|COMBUST',
+    'transporte:pedagio': 'SEM PARAR|VELOE|CONECTCAR|ESTACIONAMENTO|ESTAPAR|PEDAGIO',
+    'transporte:manutencao': 'OFICINA|BORRACHARIA|AUTO PECAS|LAVA JATO',
+    'alimentacao:delivery': 'IFOOD|IFD=|RAPPI|ZE DELIVERY|AIQFOME|UBER EATS',
+    'alimentacao:mercado': 'SUPERMERC|HIPERMERC|MERCADO=|MERCEARIA|MERCADINHO|SACOLAO|HORTIFRUTI|ATACADAO|ASSAI|CARREFOUR|PAO DE ACUCAR|VERDEMAR|SUPER NOSSO|EPA=|MART MINAS|ACOUGUE|GRANEL|PANIFICADORA',
+    'alimentacao:restaurante': 'PADARIA|RESTAURANTE|LANCHONETE|LANCHES|SORVETERIA|MARMITARIA|CAFE=|CAFETERIA|BAR=|BOTECO|CHOPP|PIZZARIA|HAMBURG|BURGER|MCDONALD|OUTBACK|SUBWAY|BISCOITO DE QUEIJO',
+    'saude:farmacia': 'DROGASIL|DROGA RAIA|RAIA|DROGARIA|FARMACIA|DROGARIAS PACHECO|ARAUJO LOJA|PAGUE MENOS|PANVEL',
+    'saude:plano': 'UNIMED|OMINT|AMIL=|HAPVIDA|SULAMERICA SAUDE|BRADESCO SAUDE|LABORATORIO|HERMES PARDINI|CLINICA|ODONTO|HOSPITAL',
+    'saude:academia': 'SMART FIT|SMARTFIT|ACADEMIA|GYMPASS|WELLHUB|TOTALPASS|PILATES',
+    'assinaturas:streaming': 'NETFLIX|SPOTIFY|AMAZON PRIME|AMAZONPRIME|HBOMAX|HELPHBOMAX|DISNEY|GLOBOPLAY|YOUTUBE|DEEZER|PARAMOUNT',
+    'assinaturas:software': 'APPLE COM|GOOGLE=|ICLOUD|MICROSOFT|CHATGPT|OPENAI|CANVA',
+    'moradia:energia': 'CEMIG|ENEL=|CPFL|LIGHT=|ENERGISA|EQUATORIAL|NEOENERGIA|COELBA|COPEL|CELESC',
+    'moradia:agua': 'COPASA|SABESP|SANEPAR|CEDAE|EMBASA|GASMIG|COMGAS|ULTRAGAZ|LIQUIGAS',
+    'moradia:internet': 'VIVO=|CLARO=|TIM=|OI MOVEL|NET SERVICOS',
+    'moradia:aluguel': 'CONDOMINIO|ALUGUEL|IMOBILIARIA|QUINTOANDAR',
+    'compras:online': 'MERCADO LIVRE|MERCADOLIVRE|AMAZON COM|AMAZON MARKETPLACE|SHOPEE|SHPP|SHEIN|ALIEXPRESS|MAGALU|AMERICANAS',
+    'compras:vestuario': 'RENNER|RIACHUELO|C A MODAS|CEA=|ZARA=|HERING|CENTAURO|NETSHOES',
+    'compras:casa': 'LEROY|TOK STOK|CASAS BAHIA|FAST SHOP|KABUM',
+    'lazer:passeios': 'CINEMA|CINEMARK|INGRESSO|SYMPLA|EVENTIM|TEATRO|MUSEU',
+    'lazer:viagens': 'BOOKING|AIRBNB|HOTEL|POUSADA|DECOLAR|LATAM|GOL LINHAS|AZUL LINHAS',
+    'educacao': 'ESCOLA|COLEGIO|EDUCACAO|FACULDADE|UNIVERSIDADE|CURSO|UDEMY|ALURA|DUOLINGO|LIVRARIA|PAPELARIA',
+    'pets': 'PET SHOP|PETSHOP|PETZ|COBASI|PETLOVE|VETERIN|AGROPET',
+    'tarifas': 'TARIFA|ANUIDADE|IOF=|JUROS=|MULTA=|IPTU|IPVA|DARF|DETRAN|LICENCIAMENTO|CARTORIO',
+    'cuidados': 'SALAO|CABELEIR|BARBEARIA|MANICURE|ESMALTERIA|ESTETICA|DEPILACAO|BOTICARIO|NATURA=|SEPHORA',
+    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO',
+    'rendimentos': 'RENDIMENTO|JUROS SOBRE CAPITAL|DIVIDENDO|ESTORNO|DEVOLUCAO PIX|PIX ENVIO DEVOLVIDO|PIX REJEITADO|CASHBACK',
+    'salario': 'SALARIO|PRO LABORE|PROVENTOS|FOLHA DE PAGAMENTO'
+  };
+  const REGRAS_PADRAO = Object.entries(REGRAS_POR_CAT)
+    .flatMap(([alvo, lista]) => lista.split('|').map(t => {
+      const [catId, subId = ''] = alvo.split(':');
+      const inteira = t.endsWith('=');
+      return { texto: inteira ? t.slice(0, -1) : t, inteira, catId, subId };
+    }))
+    .sort((a, b) => b.texto.length - a.texto.length);
+  // Testada depois de todas as outras: Pix enviado para uma pessoa vai para "Pix e transferências".
+  const REGRAS_GENERICAS = [{ texto: 'PIX ENVIADO', inteira: false, catId: 'pix', subId: '', sinal: -1 }];
 
   const CATS_PADRAO = [
     {
@@ -151,6 +105,11 @@
         { id: 'software', nome: 'Apps & Nuvem' }
       ]
     },
+    { id: 'educacao', nome: 'Educação', tipo: 'gasto', cor: '#4f6fb3', subs: [] },
+    { id: 'cuidados', nome: 'Cuidados pessoais', tipo: 'gasto', cor: '#c46b8f', subs: [] },
+    { id: 'pets', nome: 'Pets', tipo: 'gasto', cor: '#b08a4f', subs: [] },
+    { id: 'tarifas', nome: 'Tarifas & impostos', tipo: 'gasto', cor: '#9a6b4f', subs: [] },
+    { id: 'pix', nome: 'Pix e transferências', tipo: 'gasto', cor: '#6d8a96', subs: [] },
     { id: 'outros', nome: 'Outros gastos', tipo: 'gasto', cor: '#8b9999', subs: [] },
     { id: 'salario', nome: 'Salário & Receitas', tipo: 'receita', cor: '#1e824c', subs: [] },
     { id: 'rendimentos', nome: 'Rendimentos & Extras', tipo: 'receita', cor: '#3ca370', subs: [] },
@@ -390,23 +349,20 @@
     state.fixasOcultas = fixasOcultas || [];
     state.lancamentos = lancs || [];
 
+    await migrar();
     treinarIA();
 
-    let lancsModificados = false;
+    const mudados = new Set(conciliarTransferencias());
     for (const tx of state.lancamentos) {
-      if (!tx.catId) {
-        const sug = classificar(tx.desc, tx.valor);
-        if (sug && (sug.origem === 'regra' || sug.origem === 'padrao' || sug.origem === 'titular')) {
-          tx.catId = sug.catId;
-          tx.subId = sug.subId || '';
-          lancsModificados = true;
-        }
+      if (tx.catId) continue;
+      const sug = classificarPorRegra(tx.desc, tx.valor);
+      if (sug) {
+        Object.assign(tx, { catId: sug.catId, subId: sug.subId, catOrigem: 'regra' });
+        mudados.add(tx);
       }
     }
-
-    const paresConciliados = conciliarTransferencias();
-    if (lancsModificados || paresConciliados > 0) {
-      await dbPutLanc(state.lancamentos);
+    if (mudados.size) {
+      await dbPutLanc([...mudados]);
       treinarIA();
     }
 
@@ -418,20 +374,104 @@
   }
 
   /* ========================================================================
+     Migração de dados de versões anteriores (roda uma vez por aparelho)
+     ======================================================================== */
+  const MIGRACAO = 2;
+
+  // Arquivos que dizem ser windows-1252 mas vêm em UTF-8 (o OFX da XP) ficavam com "automÃ¡tico".
+  const BYTE_1252 = (() => {
+    const dec = new TextDecoder('windows-1252');
+    const m = new Map();
+    for (let b = 0; b < 256; b++) m.set(dec.decode(Uint8Array.of(b)), b);
+    return m;
+  })();
+  function consertarAcentos(s) {
+    if (!/[ÃÂ][\u0080-ÿ‘-›€ŒœŠšŸŽžƒˆ˜]/.test(s)) return s;
+    try {
+      const bytes = Uint8Array.from([...s].map(ch => {
+        if (!BYTE_1252.has(ch)) throw new Error('fora do 1252');
+        return BYTE_1252.get(ch);
+      }));
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return s;
+    }
+  }
+
+  async function migrar() {
+    if (state.exemplo || (await kvGet('migracao', 0)) >= MIGRACAO) return;
+
+    // Categorias que a versão 1.7 não tinha (Educação, Pets, Tarifas, Cuidados pessoais, Pix)
+    for (const c of CATS_PADRAO) {
+      if (getCat(c.id)) continue;
+      const iOutros = state.categorias.findIndex(x => x.id === 'outros');
+      state.categorias.splice(iOutros >= 0 ? iOutros : state.categorias.length, 0, JSON.parse(JSON.stringify(c)));
+    }
+
+    for (const tx of state.lancamentos) {
+      tx.desc = limparDescricao(consertarAcentos(tx.desc));
+      // Não dá para saber quais categorias ela escolheu e quais o app chutou: ela decide no aviso do painel.
+      if (tx.catId && !tx.catOrigem) tx.catOrigem = 'antigo';
+    }
+    for (const c of state.contas) {
+      if (typeof c.saldoExtrato === 'number' && c.saldoExtratoData) {
+        c.saldos = { ...(c.saldos || {}), [c.saldoExtratoData]: c.saldoExtrato };
+      }
+    }
+
+    await kvSet('categorias', state.categorias);
+    await kvSet('contas', state.contas);
+    await dbPutLanc(state.lancamentos);
+    await kvSet('migracao', MIGRACAO);
+  }
+
+  /** Apaga as categorias de origem desconhecida e reaplica só as regras. */
+  async function refazerClassificacaoAntiga() {
+    let comRegra = 0;
+    let semCat = 0;
+    for (const tx of state.lancamentos) {
+      if (tx.catOrigem !== 'antigo') continue;
+      const sug = classificarPorRegra(tx.desc, tx.valor);
+      tx.catId = sug ? sug.catId : '';
+      tx.subId = sug ? sug.subId : '';
+      tx.catOrigem = sug ? 'regra' : '';
+      if (sug) comRegra++; else semCat++;
+    }
+    conciliarTransferencias();
+    await dbPutLanc(state.lancamentos);
+    treinarIA();
+    toast(`${comRegra} classificados por regra · ${semCat} ficaram para você revisar`);
+    render();
+  }
+
+  async function manterClassificacaoAntiga() {
+    for (const tx of state.lancamentos) if (tx.catOrigem === 'antigo') tx.catOrigem = 'usuario';
+    await dbPutLanc(state.lancamentos);
+    treinarIA();
+    render();
+  }
+
+  /* ========================================================================
      Inteligência Local (Regras + Titularidade + Naive Bayes)
      ======================================================================== */
-  const STOP_TOKENS = new Set([
-    'PIX', 'ENVIADO', 'RECEBIDO', 'COMPRA', 'CARTAO', 'DEBITO', 'CREDITO',
-    'PAGAMENTO', 'TRANSFERENCIA', 'TED', 'DOC', 'PARC', 'PARCELA', 'LTDA',
-    'EIRELI', 'ME', 'SA', 'BR', 'BRA', 'BELO', 'HORIZONTE', 'SAO', 'PAULO',
-    'RIO', 'JANEIRO', 'PAG', 'MP', 'MERCADOPAGO', 'IFD', 'LOJA'
-  ]);
+  // Palavras que aparecem em qualquer lançamento ("Compra com Cartão", "Pagamento de Boleto") e
+  // por isso não dizem nada sobre a categoria. Sem elas, o aprendizado não chuta tudo para a mesma.
+  const STOP_TOKENS = new Set((
+    'PIX ENVIADO ENVIADA RECEBIDO RECEBIDA COMPRA COMPRAS COM CARTAO DEBITO CREDITO PAGAMENTO PAGTO PGTO ' +
+    'BOLETO TRANSFERENCIA TRANSF TED DOC TEV PARC PARCELA LTDA EIRELI BRA BELO HORIZONTE SAO PAULO ' +
+    'RIO JANEIRO PAG MERCADOPAGO IFD LOJA PARA DAS DOS COBRANCA REFERENTE AUTOMATICO'
+  ).split(' '));
 
   function tokenizar(desc) {
     return norm(desc)
+      .replace(/\*/g, ' ')
       .split(' ')
       .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP_TOKENS.has(t));
   }
+
+  // Origem da categoria de um lançamento: 'usuario' (ela escolheu), 'regra' (regra dela ou embutida),
+  // 'auto' (transferência conciliada pelo app) ou 'antigo' (veio de versão anterior, origem desconhecida).
+  const ORIGENS_CONFIAVEIS = new Set(['usuario', 'regra']);
 
   function treinarIA() {
     const vocab = {};
@@ -439,7 +479,7 @@
     let totalDocs = 0;
 
     for (const tx of state.lancamentos) {
-      if (!tx.catId || tx.catId === 'transf') continue;
+      if (!tx.catId || tx.catId === 'transf' || !ORIGENS_CONFIAVEIS.has(tx.catOrigem)) continue;
       const key = tx.subId ? `${tx.catId}:${tx.subId}` : tx.catId;
       const tokens = tokenizar(tx.desc);
       if (!tokens.length) continue;
@@ -458,70 +498,66 @@
     for (const c of state.contas) {
       if (!c.titular) continue;
       const partes = norm(c.titular).split(' ').filter(p => p.length >= 4);
-      if (partes.length >= 2 && partes.slice(0, 2).every(p => descNorm.includes(p))) {
-        return true;
-      }
+      if (partes.length >= 2 && partes.slice(0, 2).every(p => descNorm.includes(p))) return true;
     }
     return false;
   }
 
-  function classificar(desc, valor) {
-    const n = norm(desc);
-    // 1. Regras do usuário
+  // Texto da descrição com espaços nas pontas, para casar regras no começo das palavras.
+  const textoBusca = desc => ` ${norm(desc).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  function casaRegra(alvo, texto, inteira) {
+    const t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
+    return Boolean(t) && alvo.includes(` ${t}${inteira ? ' ' : ''}`);
+  }
+  // Categoria de gasto não serve para dinheiro que entrou, e vice-versa.
+  const tipoCombina = (cat, valor) => cat.tipo === 'mov' || (valor < 0 ? cat.tipo === 'gasto' : cat.tipo === 'receita');
+
+  /** Regras dela, Pix para a própria titular e regras embutidas. Não chuta: devolve null se nada casar. */
+  function classificarPorRegra(desc, valor) {
+    const alvo = textoBusca(desc);
     for (const r of state.regras) {
-      if (r.texto && n.includes(norm(r.texto))) {
-        return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
-      }
+      const c = getCat(r.catId);
+      if (c && r.texto && casaRegra(alvo, r.texto, false)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
     }
-    // 2. Transferência para mesma titularidade detectada pelo titular da conta
-    if (pareceMesmaTitularidade(n) && state.categorias.some(c => c.id === 'transf')) {
-      return { catId: 'transf', subId: '', origem: 'titular' };
-    }
-    // 3. Regras padrão
-    for (const r of REGRAS_PADRAO) {
-      if (n.includes(r.texto)) {
-        const existe = state.categorias.find(c => c.id === r.catId);
-        if (existe) {
-          const subOk = r.subId && (existe.subs || []).some(s => s.id === r.subId) ? r.subId : '';
-          return { catId: r.catId, subId: subOk, origem: 'padrao' };
-        }
-      }
-    }
-    // 4. Naive Bayes treinado com escolhas anteriores
-    if (state.ia.totalDocs >= 3) {
-      const tokens = tokenizar(desc);
-      if (tokens.length) {
-        let melhorKey = null;
-        let melhorScore = -Infinity;
-        const vocabSize = Object.keys(state.ia.vocab).length || 1;
-
-        for (const [key, docCount] of Object.entries(state.ia.catCounts)) {
-          const catId = key.split(':')[0];
-          const catObj = state.categorias.find(c => c.id === catId);
-          if (!catObj) continue;
-          if (valor < 0 && catObj.tipo === 'receita') continue;
-          if (valor > 0 && catObj.tipo === 'gasto') continue;
-
-          let score = Math.log(docCount / state.ia.totalDocs);
-          let hits = 0;
-          for (const tk of tokens) {
-            const countTk = (state.ia.vocab[tk] && state.ia.vocab[tk][key]) || 0;
-            if (countTk > 0) hits++;
-            score += Math.log((countTk + 0.5) / (docCount + 0.5 * vocabSize));
-          }
-          if (hits > 0 && score > melhorScore) {
-            melhorScore = score;
-            melhorKey = key;
-          }
-        }
-
-        if (melhorKey) {
-          const [catId, subId = ''] = melhorKey.split(':');
-          return { catId, subId, origem: 'ia' };
-        }
-      }
+    if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
+    for (const r of [...REGRAS_PADRAO, ...REGRAS_GENERICAS]) {
+      if (r.sinal && Math.sign(valor) !== r.sinal) continue;
+      if (!casaRegra(alvo, r.texto, r.inteira)) continue;
+      const c = getCat(r.catId);
+      if (!c || !tipoCombina(c, valor)) continue;
+      const subOk = r.subId && (c.subs || []).some(x => x.id === r.subId) ? r.subId : '';
+      return { catId: r.catId, subId: subOk, origem: 'regra' };
     }
     return null;
+  }
+
+  /** Sugestão para a triagem: a regra, se houver; senão o palpite do aprendizado (nunca gravado sozinho). */
+  function classificar(desc, valor) {
+    const porRegra = classificarPorRegra(desc, valor);
+    if (porRegra || state.ia.totalDocs < 3) return porRegra;
+    const tokens = tokenizar(desc);
+    if (!tokens.length) return null;
+    const vocabSize = Object.keys(state.ia.vocab).length || 1;
+    let melhorKey = null;
+    let melhorScore = -Infinity;
+    for (const [key, docCount] of Object.entries(state.ia.catCounts)) {
+      const catObj = getCat(key.split(':')[0]);
+      if (!catObj || !tipoCombina(catObj, valor)) continue;
+      let score = Math.log(docCount / state.ia.totalDocs);
+      let hits = 0;
+      for (const tk of tokens) {
+        const n = (state.ia.vocab[tk] && state.ia.vocab[tk][key]) || 0;
+        if (n > 0) hits++;
+        score += Math.log((n + 0.5) / (docCount + 0.5 * vocabSize));
+      }
+      if (hits > 0 && score > melhorScore) {
+        melhorScore = score;
+        melhorKey = key;
+      }
+    }
+    if (!melhorKey) return null;
+    const [catId, subId = ''] = melhorKey.split(':');
+    return { catId, subId, origem: 'ia' };
   }
 
   function getCat(catId) {
@@ -561,63 +597,69 @@
     return state.lancamentos.filter(tx => (tx.data || '').startsWith(ym));
   }
 
+  const ehCartao = contaId => getConta(contaId)?.tipo === 'cartao';
+  const ehMov = tx => getCat(tx.catId)?.tipo === 'mov';
+  const RE_FATURA = /FATURA|OUROCARD|CARTAO DE CREDITO|PAGAMENTO (DE )?CARTAO/;
+  /** Pagamento da fatura do cartão saindo da conta: não é gasto novo, mas é dinheiro que saiu do banco. */
+  const ehPagamentoFatura = tx =>
+    tx.valor < 0 && ehMov(tx) && !ehCartao(tx.contaId) && (tx.ehFatura || RE_FATURA.test(norm(tx.desc)));
+
+  /**
+   * Dois olhares sobre o mês:
+   * - Entrou / Saiu / Sobrou: o que passou nas contas bancárias, igual ao extrato. Transferências entre
+   *   as próprias contas e aplicações/resgates ficam fora (movLiq); a fatura do cartão entra no Saiu
+   *   no dia em que foi paga.
+   * - porCat / gastos: para onde foi o dinheiro, com as compras do cartão na data da compra.
+   */
   function resumoMes(ym) {
     const lista = lancamentosDoMes(ym);
-    let entrou = 0;
-    let saiu = 0;
-    let qtdEntrou = 0;
-    let qtdSaiu = 0;
-    let semCat = 0;
-    const porCat = {};
-    const porSub = {};
+    const r = {
+      lista, entrou: 0, saiu: 0, qtdEntrou: 0, qtdSaiu: 0, fatura: 0, movLiq: 0,
+      compCartao: 0, gastos: 0, semCat: 0, porCat: {}, porSub: {}
+    };
 
     for (const tx of lista) {
       const cat = getCat(tx.catId);
-      if (!cat && tx.valor < 0) semCat++;
-      if (cat && cat.tipo === 'mov') continue;
+      const mov = ehMov(tx);
+      const cartao = ehCartao(tx.contaId);
 
-      if (tx.valor > 0) {
-        const liq = valorLiquidoEntrada(tx);
-        if (liq > 0) {
-          entrou = round2(entrou + liq);
-          qtdEntrou++;
+      if (!cartao) {
+        if (mov && !ehPagamentoFatura(tx)) {
+          r.movLiq += tx.valor;
+        } else if (tx.valor > 0) {
+          r.entrou += tx.valor;
+          r.qtdEntrou++;
+        } else {
+          r.saiu -= tx.valor;
+          r.qtdSaiu++;
+          if (ehPagamentoFatura(tx)) r.fatura -= tx.valor;
         }
-      } else if (tx.valor < 0) {
+      } else if (tx.valor < 0 && !mov) {
+        r.compCartao -= tx.valor;
+      }
+
+      if (tx.valor < 0 && !mov) {
         const liq = valorLiquidoGasto(tx);
-        saiu = round2(saiu + liq);
-        qtdSaiu++;
-        const cid = cat ? cat.id : 'outros';
-        porCat[cid] = round2((porCat[cid] || 0) + liq);
-        if (cat && tx.subId) {
-          const sk = `${cid}:${tx.subId}`;
-          porSub[sk] = round2((porSub[sk] || 0) + liq);
-        }
+        const cid = cat ? cat.id : '__sem';
+        if (!cat) r.semCat++;
+        r.gastos += liq;
+        r.porCat[cid] = (r.porCat[cid] || 0) + liq;
+        if (cat && tx.subId) r.porSub[`${cid}:${tx.subId}`] = (r.porSub[`${cid}:${tx.subId}`] || 0) + liq;
       }
     }
 
-    return {
-      lista,
-      entrou,
-      saiu,
-      sobra: round2(entrou - saiu),
-      qtdEntrou,
-      qtdSaiu,
-      semCat,
-      porCat,
-      porSub
-    };
+    for (const k of ['entrou', 'saiu', 'fatura', 'movLiq', 'compCartao', 'gastos']) r[k] = round2(r[k]);
+    for (const k of Object.keys(r.porCat)) r.porCat[k] = round2(r.porCat[k]);
+    for (const k of Object.keys(r.porSub)) r.porSub[k] = round2(r.porSub[k]);
+    r.sobra = round2(r.entrou - r.saiu);
+    return r;
   }
 
   function recalcularSaldoInicialPorExtrato(conta) {
     if (!conta || conta.tipo === 'cartao' || conta.saldoInicialManual) return false;
     if (typeof conta.saldoExtrato !== 'number' || !Number.isFinite(conta.saldoExtrato)) return false;
-
-    const dtRef = conta.saldoExtratoData || '';
-    const somaAteExtrato = state.lancamentos
-      .filter(tx => tx.contaId === conta.id && (!dtRef || (tx.data && tx.data <= dtRef)))
-      .reduce((acc, tx) => acc + (Number(tx.valor) || 0), 0);
-
-    const novoIni = round2(conta.saldoExtrato - somaAteExtrato);
+    const dtRef = conta.saldoExtratoData || '9999-12-31';
+    const novoIni = round2(conta.saldoExtrato - somaConta(conta.id, dtRef));
     if (Math.abs((Number(conta.saldoInicial) || 0) - novoIni) >= 0.005) {
       conta.saldoInicial = novoIni;
       return true;
@@ -625,71 +667,68 @@
     return false;
   }
 
-  function calcularSaldoConta(conta) {
-    const ini = Number(conta.saldoInicial) || 0;
-    const soma = state.lancamentos
-      .filter(tx => tx.contaId === conta.id)
+  /** Soma dos lançamentos da conta até a data (inclusive). */
+  function somaConta(contaId, ate = '9999-12-31') {
+    return state.lancamentos
+      .filter(tx => tx.contaId === contaId && tx.data <= ate)
       .reduce((acc, tx) => acc + (Number(tx.valor) || 0), 0);
-    return round2(ini + soma);
+  }
+
+  const saldoEm = (conta, data) => round2((Number(conta.saldoInicial) || 0) + somaConta(conta.id, data));
+  const calcularSaldoConta = conta => saldoEm(conta, '9999-12-31');
+  const fimDoMes = ym => {
+    const [y, m] = ym.split('-').map(Number);
+    return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+  };
+  const vespera = ym => fimDoMes(addMes(ym, -1));
+
+  /** Saldo informado pelo banco (OFX) dentro do mês: o mais recente. */
+  function saldoExtratoNoMes(conta, ym) {
+    const datas = Object.keys(conta.saldos || {}).filter(d => d.startsWith(ym)).sort();
+    const d = datas.pop();
+    return d ? { data: d, valor: conta.saldos[d] } : null;
   }
 
   function detectarFixas(ym) {
-    const meses = [addMes(ym, -3), addMes(ym, -2), addMes(ym, -1), ym];
+    const anteriores = [addMes(ym, -3), addMes(ym, -2), addMes(ym, -1)];
     const grupos = new Map();
 
-    for (const m of meses) {
-      const doMes = lancamentosDoMes(m).filter(tx => {
-        if (tx.valor >= 0) return false;
+    for (const m of [...anteriores, ym]) {
+      for (const tx of lancamentosDoMes(m)) {
         const c = getCat(tx.catId);
-        return Boolean(c && c.tipo === 'gasto');
-      });
-      const vistosNoMes = new Set();
-      for (const tx of doMes) {
-        const tokens = tokenizar(tx.desc).slice(0, 3);
-        const chave = tokens.length ? tokens.join(' ') : norm(tx.desc).slice(0, 22);
+        if (tx.valor >= 0 || !c || c.tipo !== 'gasto' || c.id === 'pix') continue;
+        const chave = tokenizar(tx.desc).slice(0, 3).join(' ');
         if (!chave || state.fixasOcultas.includes(chave)) continue;
-        if (vistosNoMes.has(chave)) continue;
-        vistosNoMes.add(chave);
-
-        if (!grupos.has(chave)) {
-          grupos.set(chave, { chave, nome: tx.desc, catId: tx.catId, itens: {} });
-        }
-        grupos.get(chave).itens[m] = tx;
+        if (!grupos.has(chave)) grupos.set(chave, { chave, catId: tx.catId, porMes: {} });
+        (grupos.get(chave).porMes[m] ||= []).push(tx);
       }
     }
 
     const fixas = [];
     for (const g of grupos.values()) {
-      const mesesPresentes = Object.keys(g.itens);
-      if (mesesPresentes.length < 2) continue;
-
-      const vals = mesesPresentes.map(m => Math.abs(g.itens[m].valor));
+      // Conta fixa: aparece em pelo menos 2 dos 3 meses anteriores, uma vez só por mês, com valor parecido.
+      if (anteriores.filter(m => g.porMes[m]).length < 2) continue;
+      const listas = Object.values(g.porMes);
+      if (listas.some(l => l.length > 1)) continue;
+      const vals = listas.map(l => Math.abs(l[0].valor));
       const media = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const minV = Math.min(...vals);
-      const maxV = Math.max(...vals);
-      // Exige valores consistentes entre meses (evita compras avulsas no mesmo comércio)
-      if (media > 0 && (maxV - minV) / media > 0.45 && g.catId !== 'moradia' && g.catId !== 'assinaturas') {
-        continue;
-      }
+      const tolerancia = ['moradia', 'assinaturas', 'educacao', 'saude'].includes(g.catId) ? 0.35 : 0.15;
+      if (media > 0 && (Math.max(...vals) - Math.min(...vals)) / media > tolerancia) continue;
 
-      const atualTx = g.itens[ym] || null;
-      const refTx = atualTx || g.itens[mesesPresentes[mesesPresentes.length - 1]];
+      const atualTx = g.porMes[ym] ? g.porMes[ym][0] : null;
+      const refTx = atualTx || g.porMes[anteriores.filter(m => g.porMes[m]).pop()][0];
       const valorAtual = atualTx ? Math.abs(atualTx.valor) : round2(media);
-      const dia = Number((refTx.data || '').slice(8, 10)) || 10;
-      const alta = atualTx && media > 0 && valorAtual > media * 1.12 && (valorAtual - media) >= 5;
-
       fixas.push({
         chave: g.chave,
         nome: refTx.desc,
         catId: refTx.catId,
-        dia,
+        dia: Number(refTx.data.slice(8, 10)) || 10,
         pago: Boolean(atualTx),
         valor: valorAtual,
         media: round2(media),
-        alta
+        alta: Boolean(atualTx) && valorAtual > media * 1.12 && valorAtual - media >= 5
       });
     }
-
     return fixas.sort((a, b) => (a.pago === b.pago ? a.dia - b.dia : a.pago ? 1 : -1));
   }
 
@@ -751,82 +790,57 @@
     return futuros.sort((a, b) => a.data.localeCompare(b.data));
   }
 
+  const RE_TRANSF = /PIX|TED|DOC|TEV|TRANSF|FATURA|PAGAMENTO|RESGATE|APLIC/;
+
+  /**
+   * Marca como "Transferência / Fatura" a saída de uma conta que entra em outra (mesmo valor, até 3 dias)
+   * e o pagamento que bate com o total de compras do cartão no mês. Nunca mexe no que ela classificou.
+   * Devolve os lançamentos alterados.
+   */
   function conciliarTransferencias() {
-    if (!state.categorias.some(c => c.id === 'transf')) return 0;
-    let pares = 0;
+    if (!getCat('transf')) return [];
+    const livre = tx => tx.catOrigem !== 'usuario' && RE_TRANSF.test(norm(tx.desc));
+    const dia = tx => Date.parse(`${tx.data}T12:00:00Z`) / 86400000;
+    const mudados = new Set();
+    const marcar = (tx, fatura = false) => {
+      if (tx.catId === 'transf' && (!fatura || tx.ehFatura)) return;
+      Object.assign(tx, { catId: 'transf', subId: '', catOrigem: 'auto' });
+      if (fatura) tx.ehFatura = true;
+      mudados.add(tx);
+    };
+
+    // 1. Saída numa conta com entrada de mesmo valor em outra
+    const entradas = state.lancamentos.filter(b => b.valor > 0 && livre(b));
     const usadas = new Set();
-
-    // 1. Pareamento exato de saída em uma conta com entrada de mesmo valor em outra conta (até 5 dias)
     for (const a of state.lancamentos) {
-      if (a.valor >= 0 || usadas.has(a.id)) continue;
-      const tA = Date.parse(a.data + 'T12:00:00Z');
-      if (!Number.isFinite(tA)) continue;
-
-      const candidatos = state.lancamentos.filter(b => {
-        if (b.id === a.id || usadas.has(b.id)) return false;
-        if (b.contaId === a.contaId || b.valor <= 0) return false;
-        if (Math.abs(Math.abs(a.valor) - b.valor) > 0.02) return false;
-        const tB = Date.parse(b.data + 'T12:00:00Z');
-        return Number.isFinite(tB) && Math.abs(tA - tB) <= 5 * 86400000;
-      });
-
-      if (!candidatos.length) continue;
-
-      candidatos.sort((x, y) => {
-        const dx = Math.abs(Date.parse(x.data + 'T12:00:00Z') - tA);
-        const dy = Math.abs(Date.parse(y.data + 'T12:00:00Z') - tA);
-        return dx - dy;
-      });
-
-      const match = candidatos[0];
-      usadas.add(a.id);
-      usadas.add(match.id);
-      if (a.catId !== 'transf' || match.catId !== 'transf') {
-        a.catId = 'transf';
-        a.subId = '';
-        match.catId = 'transf';
-        match.subId = '';
-        pares++;
-      }
+      if (a.valor >= 0 || !livre(a)) continue;
+      const par = entradas
+        .filter(b => !usadas.has(b.id) && b.contaId !== a.contaId &&
+          Math.abs(b.valor + a.valor) <= 0.02 && Math.abs(dia(b) - dia(a)) <= 3)
+        .sort((x, y) => Math.abs(dia(x) - dia(a)) - Math.abs(dia(y) - dia(a)))[0];
+      if (!par) continue;
+      usadas.add(par.id);
+      marcar(a, ehCartao(par.contaId));
+      marcar(par);
     }
 
-    // 2. Pareamento de pagamento de fatura na conta corrente com o total mensal de um cartão de crédito
-    const cartoes = state.contas.filter(c => c.tipo === 'cartao');
-    for (const cc of cartoes) {
+    // 2. Pagamento na conta que bate com o total de compras do cartão no mês (ou no mês seguinte)
+    for (const cc of state.contas.filter(c => c.tipo === 'cartao')) {
       const porMes = new Map();
       for (const tx of state.lancamentos) {
-        if (tx.contaId !== cc.id || tx.valor >= 0) continue;
-        const c = getCat(tx.catId);
-        if (c && c.tipo === 'mov') continue;
-        const ym = (tx.data || '').slice(0, 7);
-        if (!ym) continue;
-        porMes.set(ym, round2((porMes.get(ym) || 0) + Math.abs(tx.valor)));
+        if (tx.contaId !== cc.id || tx.valor >= 0 || ehMov(tx)) continue;
+        const ym = tx.data.slice(0, 7);
+        porMes.set(ym, round2((porMes.get(ym) || 0) - tx.valor));
       }
-
-      for (const [ym, totalFatura] of porMes.entries()) {
-        if (totalFatura < 10) continue;
-        const mesesBusca = [ym, addMes(ym, 1)];
-        const pgto = state.lancamentos.find(tx => {
-          if (usadas.has(tx.id) || tx.valor >= 0) return false;
-          const ct = getConta(tx.contaId);
-          if (!ct || ct.tipo === 'cartao') return false;
-          if (!mesesBusca.includes((tx.data || '').slice(0, 7))) return false;
-          if (Math.abs(Math.abs(tx.valor) - totalFatura) > 0.05) return false;
-          return /FATURA|CARTAO|OUROCARD|PAGAMENTO|DEBITO|CREDITO|XP|NUBANK|ITAU|BRADESCO|SANTANDER|INTER|BTG/.test(norm(tx.desc));
-        });
-
-        if (pgto) {
-          usadas.add(pgto.id);
-          if (pgto.catId !== 'transf') {
-            pgto.catId = 'transf';
-            pgto.subId = '';
-            pares++;
-          }
-        }
+      for (const [ym, total] of porMes) {
+        if (total < 10) continue;
+        const pgto = state.lancamentos.find(tx =>
+          tx.valor < 0 && !ehCartao(tx.contaId) && livre(tx) &&
+          [ym, addMes(ym, 1)].includes(tx.data.slice(0, 7)) && Math.abs(total + tx.valor) <= 0.05);
+        if (pgto) marcar(pgto, true);
       }
     }
-
-    return pares;
+    return [...mudados];
   }
 
   /* ========================================================================
@@ -863,6 +877,23 @@
   /* ========================================================================
      Renderização: Painel do Mês
      ======================================================================== */
+  function irParaLancamentos({ cat = '', conta = '', sem = false } = {}) {
+    $('#fCat').value = cat;
+    $('#fConta').value = conta;
+    $('#fSem').checked = sem;
+    $('#busca').value = '';
+    irPara('lancamentos');
+  }
+
+  function aviso(id, html, botoes) {
+    const el = $(id);
+    el.hidden = !html;
+    if (!html) return;
+    el.innerHTML = `<span>${html}</span><span class="row">${botoes.map((b, i) =>
+      `<button type="button" class="${i ? 'lnk' : 'btn sm'}" data-i="${i}">${esc(b.txt)}</button>`).join('')}</span>`;
+    $$('button[data-i]', el).forEach(btn => { btn.onclick = botoes[Number(btn.dataset.i)].acao; });
+  }
+
   function renderPainel() {
     const vazio = $('#vazio');
     const painel = $('#painel');
@@ -877,82 +908,51 @@
     const res = resumoMes(state.mes);
     const ehMesAtual = state.mes === mesAtualStr();
 
-    const avRev = $('#avisoRevisar');
-    if (res.semCat > 0) {
-      avRev.hidden = false;
-      avRev.innerHTML = `
-        <span>Você tem <b>${res.semCat}</b> ${res.semCat === 1 ? 'gasto sem categoria' : 'gastos sem categoria'} neste mês.</span>
-        <button type="button" class="btn sm" id="btnTriagemRapida">Classificar agora</button>
-      `;
-      $('#btnTriagemRapida', avRev).onclick = () => {
-        $('#fSem').checked = true;
-        $('#fCat').value = '';
-        $('#fConta').value = '';
-        $('#busca').value = '';
-        irPara('lancamentos');
-      };
-    } else {
-      avRev.hidden = true;
-    }
+    const antigos = state.lancamentos.filter(tx => tx.catOrigem === 'antigo').length;
+    aviso('#avisoRefazer', antigos
+      ? `<b>A classificação automática melhorou.</b> ${antigos} lançamentos foram classificados pela versão anterior, que errava bastante (boletos da escola em Saúde, por exemplo). Refazer apaga essas categorias e reaplica só as regras; o que não tiver regra volta para você classificar.`
+      : '', [
+      { txt: 'Refazer agora', acao: refazerClassificacaoAntiga },
+      { txt: 'Manter como está', acao: manterClassificacaoAntiga }
+    ]);
 
-    const avBk = $('#avisoBackup');
+    aviso('#avisoRevisar', res.semCat
+      ? `Você tem <b>${res.semCat}</b> ${res.semCat === 1 ? 'gasto sem categoria' : 'gastos sem categoria'} neste mês.`
+      : '', [{ txt: 'Classificar agora', acao: () => irParaLancamentos({ sem: true }) }]);
+
     const ultBk = Number(localStorage.getItem('bolso-ultimo-backup') || 0);
     const diasSemBk = ultBk ? Math.floor((Date.now() - ultBk) / 86400000) : 999;
-    if (!state.exemplo && state.lancamentos.length >= 25 && diasSemBk > 20) {
-      avBk.hidden = false;
-      avBk.innerHTML = `
-        <span>${ultBk ? `Última cópia de segurança há ${diasSemBk} dias.` : 'Você ainda não salvou uma cópia de segurança dos seus dados.'}</span>
-        <button type="button" class="btn sm" id="btnBkAviso">Salvar cópia</button>
-      `;
-      $('#btnBkAviso', avBk).onclick = exportarBackup;
-    } else {
-      avBk.hidden = true;
-    }
+    aviso('#avisoBackup', !state.exemplo && state.lancamentos.length >= 25 && diasSemBk > 30
+      ? (ultBk ? `Última cópia de segurança há ${diasSemBk} dias.` : 'Você ainda não salvou uma cópia de segurança dos seus dados.')
+      : '', [{ txt: 'Salvar cópia', acao: exportarBackup }]);
 
-    const sEntrou = moed(res.entrou);
-    const sSaiu = moed(res.saiu);
-    const elEntrou = $('#kEntrou');
-    const elSaiu = $('#kSaiu');
-    elEntrou.textContent = sEntrou;
-    elSaiu.textContent = sSaiu;
-    elEntrou.classList.toggle('val-longo', sEntrou.length >= 13);
-    elSaiu.classList.toggle('val-longo', sSaiu.length >= 13);
-
+    $('#kEntrou').textContent = moed(res.entrou);
+    $('#kSaiu').textContent = moed(res.saiu);
     $('#kEntrouSub').textContent = res.qtdEntrou
-      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'}`
+      ? `${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'} nas contas`
       : 'Nenhuma entrada no mês';
-    $('#kSaiuSub').textContent = res.qtdSaiu
-      ? `${res.qtdSaiu} ${res.qtdSaiu === 1 ? 'gasto' : 'gastos'}`
-      : 'Nenhum gasto no mês';
+    $('#kSaiuSub').textContent = res.fatura > 0
+      ? `inclui a fatura do cartão (${moed(res.fatura)})`
+      : `${res.qtdSaiu} ${res.qtdSaiu === 1 ? 'saída' : 'saídas'} das contas`;
 
     const elSobra = $('#kSobra');
     elSobra.textContent = moed(res.sobra);
     elSobra.className = 'num ' + (res.sobra >= 0 ? 'pos' : 'neg');
-    if (res.entrou > 0) {
-      const pct = Math.round((res.sobra / res.entrou) * 100);
-      $('#kSobraSub').textContent = res.sobra >= 0
-        ? `Você guardou ${pct}% do que entrou`
-        : `Gastou ${Math.abs(pct)}% além do que entrou`;
-    } else {
-      $('#kSobraSub').textContent = res.sobra >= 0 ? 'Saldo positivo' : 'Saídas maiores que entradas';
-    }
+    const variacao = round2(res.sobra + res.movLiq);
+    $('#kSobraSub').textContent = Math.abs(res.movLiq) < 0.01
+      ? 'É quanto o saldo das contas mudou no mês'
+      : `Saldo das contas mudou ${moed(variacao)}: inclui ${moed(Math.abs(res.movLiq))} ${res.movLiq < 0 ? 'aplicados ou enviados para outras contas suas' : 'resgatados ou vindos de outras contas suas'}`;
 
     const fixas = detectarFixas(state.mes);
-    const fixasPendentes = fixas.filter(f => !f.pago);
     const futuros = parcelasFuturasNoMes(state.mes);
-
-    const kpiPrev = $('#kpiPrev');
-    if (ehMesAtual && (fixasPendentes.length > 0 || futuros.length > 0)) {
-      const pendenteFixas = fixasPendentes.reduce((acc, f) => acc + f.valor, 0);
-      const pendenteParc = futuros.filter(f => !f.real).reduce((acc, f) => acc + f.valor, 0);
-      const prevFinal = round2(res.sobra - pendenteFixas - pendenteParc);
-      kpiPrev.hidden = false;
-      const elPrev = $('#kPrev');
-      elPrev.textContent = moed(prevFinal);
-      elPrev.className = 'num ' + (prevFinal >= 0 ? 'pos' : 'neg');
-      $('#kPrevSub').textContent = `Considerando ${moed(pendenteFixas + pendenteParc)} em contas fixas e parcelas a vencer`;
-    } else {
-      kpiPrev.hidden = true;
+    const pendFixas = fixas.filter(f => !f.pago).reduce((acc, f) => acc + f.valor, 0);
+    const pendParc = futuros.filter(f => !f.real).reduce((acc, f) => acc + f.valor, 0);
+    $('#kpiPrev').hidden = !(ehMesAtual && pendFixas + pendParc > 0);
+    if (!$('#kpiPrev').hidden) {
+      const prevFinal = round2(res.sobra - pendFixas - pendParc);
+      $('#kPrev').textContent = moed(prevFinal);
+      $('#kPrev').className = 'num ' + (prevFinal >= 0 ? 'pos' : 'neg');
+      $('#kPrevSub').textContent = `Considerando ${moed(pendFixas + pendParc)} em contas fixas e parcelas que ainda vão vencer`;
     }
 
     renderContasStrip();
@@ -965,58 +965,48 @@
     renderTop5Card(res);
   }
 
+  /** Uma linha por conta: saldo no início e no fim do mês, e se bate com o saldo que o banco informou. */
   function renderContasStrip() {
     const el = $('#contasStrip');
-    if (!state.contas.length) {
-      el.hidden = true;
-      return;
-    }
-    el.hidden = false;
+    el.hidden = !state.contas.length;
+    const ym = state.mes;
+    const fim = ym === mesAtualStr() ? hojeStr() : fimDoMes(ym);
+    const dataBR = d => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
     el.innerHTML = state.contas.map(c => {
-      const ehCartao = c.tipo === 'cartao';
-      if (ehCartao) {
-        const gastoMes = state.lancamentos
-          .filter(tx => {
-            if (tx.contaId !== c.id || !(tx.data || '').startsWith(state.mes) || tx.valor >= 0) return false;
-            const cat = getCat(tx.catId);
-            return !cat || cat.tipo !== 'mov';
-          })
-          .reduce((acc, tx) => acc + Math.abs(tx.valor), 0);
-        const fecha = c.fechaDia ? ` · fecha dia ${c.fechaDia}` : '';
+      const doMes = lancamentosDoMes(ym).filter(tx => tx.contaId === c.id);
+      if (c.tipo === 'cartao') {
+        const compras = doMes.filter(tx => tx.valor < 0 && !ehMov(tx)).reduce((acc, tx) => acc - tx.valor, 0);
+        const pagamentos = doMes.filter(tx => tx.valor > 0 && ehMov(tx)).reduce((acc, tx) => acc + tx.valor, 0);
         return `
           <div class="conta-pill" data-conta="${esc(c.id)}">
-            <div class="cn"><span>💳 ${esc(c.nome)}</span><span class="csub">Fatura no mês${fecha}</span></div>
-            <div class="cv num">${moed(gastoMes)}</div>
-          </div>
-        `;
-      } else {
-        const saldoCalc = calcularSaldoConta(c);
-        let badge = '';
-        if (typeof c.saldoExtrato === 'number' && Number.isFinite(c.saldoExtrato)) {
-          const diff = round2(saldoCalc - c.saldoExtrato);
-          if (Math.abs(diff) < 0.05) {
-            badge = `<span class="badge-ok">✓ Conferido com extrato</span>`;
-          } else {
-            badge = `<span class="badge-warn" title="Extrato: ${moed(c.saldoExtrato)}">Extrato: ${moed(c.saldoExtrato)}</span>`;
-          }
-        }
-        return `
-          <div class="conta-pill" data-conta="${esc(c.id)}">
-            <div class="cn"><span>🏦 ${esc(c.nome)}</span>${badge}</div>
-            <div class="cv num ${saldoCalc >= 0 ? 'pos' : 'neg'}">${moed(saldoCalc)}</div>
-          </div>
-        `;
+            <div class="cn"><span>💳 ${esc(c.nome)}</span><span class="csub">compras no mês</span></div>
+            <div class="cv num">${moed(compras)}</div>
+            ${pagamentos ? `<div class="csub">Fatura paga no mês: ${moed(pagamentos)}</div>` : ''}
+          </div>`;
       }
+      const ini = saldoEm(c, vespera(ym));
+      const final = saldoEm(c, fim);
+      const ent = doMes.filter(tx => tx.valor > 0).reduce((acc, tx) => acc + tx.valor, 0);
+      const sai = doMes.filter(tx => tx.valor < 0).reduce((acc, tx) => acc - tx.valor, 0);
+      const ext = saldoExtratoNoMes(c, ym);
+      let badge = '';
+      if (ext) {
+        const calc = saldoEm(c, ext.data);
+        badge = Math.abs(calc - ext.valor) < 0.01
+          ? `<span class="badge-ok">✓ igual ao extrato de ${dataBR(ext.data)}</span>`
+          : `<span class="badge-warn">Extrato de ${dataBR(ext.data)}: ${moed(ext.valor)} (diferença ${moed(calc - ext.valor)})</span>`;
+      }
+      return `
+        <div class="conta-pill" data-conta="${esc(c.id)}">
+          <div class="cn"><span>🏦 ${esc(c.nome)}</span>${badge}</div>
+          <div class="cv num ${final >= 0 ? 'pos' : 'neg'}">${moed(final)}</div>
+          <div class="csub num">${moed(ini)} em ${dataBR(vespera(ym))} · +${moed(ent)} · −${moed(sai)}</div>
+        </div>`;
     }).join('');
 
     $$('.conta-pill', el).forEach(pill => {
-      pill.onclick = () => {
-        $('#fConta').value = pill.dataset.conta;
-        $('#fCat').value = '';
-        $('#fSem').checked = false;
-        $('#busca').value = '';
-        irPara('lancamentos');
-      };
+      pill.onclick = () => irParaLancamentos({ conta: pill.dataset.conta });
     });
   }
 
@@ -1172,6 +1162,7 @@
   function renderCategoriasCard(res) {
     const el = $('#cats');
     const catsGasto = state.categorias.filter(c => c.tipo === 'gasto');
+    if (res.porCat.__sem) catsGasto.push({ id: '__sem', nome: 'Sem categoria', cor: '#d99b26', subs: [] });
     const itens = catsGasto
       .map(c => ({
         cat: c,
@@ -1189,7 +1180,7 @@
     const maxVal = Math.max(...itens.map(x => Math.max(x.valor, x.limite)), 1);
 
     el.innerHTML = itens.map(({ cat, valor, limite }) => {
-      const pctTotal = res.saiu > 0 ? Math.round((valor / res.saiu) * 100) : 0;
+      const pctTotal = res.gastos > 0 ? Math.round((valor / res.gastos) * 100) : 0;
       let widthPct = 0;
       let cls = 'enche';
       let detDir = '';
@@ -1233,101 +1224,59 @@
           ${subsHtml}
         </div>
       `;
-    }).join('');
+    }).join('') + (res.compCartao > 0 ? `
+      <p class="mut nota-cartao">Inclui ${moed(res.compCartao)} de compras no cartão, na data da compra. No “Saiu” lá em cima entra o pagamento da fatura${res.fatura ? ` (${moed(res.fatura)})` : ''}, que é o que sai da conta.</p>` : '');
 
     $$('[data-cat]', el).forEach(node => {
-      node.onclick = () => {
-        $('#fCat').value = node.dataset.cat;
-        $('#fConta').value = '';
-        $('#fSem').checked = false;
-        $('#busca').value = '';
-        irPara('lancamentos');
-      };
+      node.onclick = () => node.dataset.cat === '__sem'
+        ? irParaLancamentos({ sem: true })
+        : irParaLancamentos({ cat: node.dataset.cat });
     });
   }
 
   function renderHistoricoCard() {
     const el = $('#histCard');
     const baseMes = addMes(mesAtualStr(), state.histOffset);
-    const meses = [];
-    for (let i = -5; i <= 0; i++) meses.push(addMes(baseMes, i));
-
-    const dados = meses.map(m => ({ mes: m, ...resumoMes(m) }));
+    const dados = [-5, -4, -3, -2, -1, 0].map(i => {
+      const mes = addMes(baseMes, i);
+      return { mes, ...resumoMes(mes) };
+    });
     const maxBarra = Math.max(...dados.map(d => Math.max(d.entrou, d.saiu)), 1);
-
-    const somaCats = {};
-    for (const d of dados) {
-      for (const [cid, v] of Object.entries(d.porCat)) {
-        somaCats[cid] = (somaCats[cid] || 0) + v;
-      }
-    }
-    const topCats = Object.entries(somaCats)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([cid]) => getCat(cid))
-      .filter(Boolean);
-    const topCatIds = new Set(topCats.map(c => c.id));
-
-    const colsHtml = dados.map(d => {
-      const hEnt = d.entrou > 0 ? Math.max(4, Math.round((d.entrou / maxBarra) * 80)) : 0;
-      const segs = [];
-      for (const c of topCats) {
-        const v = d.porCat[c.id] || 0;
-        if (v > 0) segs.push({ cor: c.cor || '#0f5257', h: Math.max(2, Math.round((v / maxBarra) * 80)) });
-      }
-      const outrosV = Object.entries(d.porCat)
-        .filter(([cid]) => !topCatIds.has(cid))
-        .reduce((acc, [, v]) => acc + v, 0);
-      if (outrosV > 0) segs.push({ cor: '#8b9999', h: Math.max(2, Math.round((outrosV / maxBarra) * 80)) });
-
-      return `
-        <div class="hcol ${d.mes === state.mes ? 'atual' : ''}" data-mes="${d.mes}">
-          <span class="ve num">${d.entrou > 0 ? moed(d.entrou, true).replace('R$\u00a0', '').replace('R$ ', '') : ''}</span>
-          <div class="hbars">
-            <div class="e" style="height:${hEnt}px" title="Entrou: ${moed(d.entrou)}"></div>
-            <div class="s-stack" title="Saiu: ${moed(d.saiu)}">
-              ${segs.map(s => `<i class="s-seg" style="height:${s.h}px;background:${esc(s.cor)}"></i>`).join('')}
-            </div>
-          </div>
-          <span class="vs num">${d.saiu > 0 ? moed(d.saiu, true).replace('R$\u00a0', '').replace('R$ ', '') : ''}</span>
-          <span class="m">${esc(labelMesCurto(d.mes))}</span>
-        </div>
-      `;
-    }).join('');
+    const curto = v => (v > 0 ? moed(v, true).replace(/R\$\s?/, '') : '');
+    const altura = v => (v > 0 ? Math.max(3, Math.round((v / maxBarra) * 80)) : 0);
 
     const comDados = dados.filter(d => d.entrou > 0 || d.saiu > 0);
-    const nCom = Math.max(1, comDados.length);
-    const medEnt = comDados.reduce((a, b) => a + b.entrou, 0) / nCom;
-    const medSai = comDados.reduce((a, b) => a + b.saiu, 0) / nCom;
+    const n = Math.max(1, comDados.length);
+    const medEnt = comDados.reduce((a, d) => a + d.entrou, 0) / n;
+    const medSai = comDados.reduce((a, d) => a + d.saiu, 0) / n;
 
     el.innerHTML = `
-      <div class="card-h">
-        <h2>Últimos 6 meses</h2>
-        <span class="mut">Toque num mês</span>
-      </div>
+      <div class="card-h"><h2>Últimos 6 meses</h2><span class="mut">Toque num mês</span></div>
       <div class="hist-wrap">
         <button type="button" class="hist-nav-btn" id="histAnt" aria-label="Meses anteriores">‹</button>
-        <div class="hist">${colsHtml}</div>
+        <div class="hist">${dados.map(d => `
+          <div class="hcol ${d.mes === state.mes ? 'atual' : ''}" data-mes="${d.mes}" title="Entrou ${moed(d.entrou)} · Saiu ${moed(d.saiu)}">
+            <span class="ve num">${curto(d.entrou)}</span>
+            <div class="hbars">
+              <div class="e" style="height:${altura(d.entrou)}px"></div>
+              <div class="s-stack"><i class="s-seg" style="height:${altura(d.saiu)}px;background:var(--bar)"></i></div>
+            </div>
+            <span class="vs num">${curto(d.saiu)}</span>
+            <span class="m">${esc(labelMesCurto(d.mes))}</span>
+          </div>`).join('')}
+        </div>
         <button type="button" class="hist-nav-btn" id="histProx" aria-label="Próximos meses">›</button>
       </div>
-      <div class="leg">
-        <span><i style="background:var(--bar-2)"></i>Entrou</span>
-        ${topCats.map(c => `<span><i style="background:${esc(c.cor)}"></i>${esc(c.nome)}</span>`).join('')}
-        <span><i style="background:#8b9999"></i>Outros</span>
-      </div>
+      <div class="leg"><span><i style="background:var(--bar-2)"></i>Entrou</span><span><i style="background:var(--bar)"></i>Saiu</span></div>
       <div class="hist-resumo">
         <span>Média entrou: <b class="num pos">${moed(medEnt, true)}</b></span>
         <span>Média saiu: <b class="num">${moed(medSai, true)}</b></span>
-      </div>
-    `;
+      </div>`;
 
     $('#histAnt', el).onclick = () => { state.histOffset--; renderHistoricoCard(); };
     $('#histProx', el).onclick = () => { state.histOffset++; renderHistoricoCard(); };
     $$('.hcol', el).forEach(col => {
-      col.onclick = () => {
-        state.mes = col.dataset.mes;
-        render();
-      };
+      col.onclick = () => { state.mes = col.dataset.mes; render(); };
     });
   }
 
@@ -1392,34 +1341,19 @@
     fConta.value = valConta;
   }
 
-  function sugerirChipsTriagem(tx) {
+  /** Até 3 botões: a sugestão (✦) e as categorias que ela mais usa para esse tipo de lançamento. */
+  function sugerirChipsTriagem(tx, usoPorSinal) {
     const chips = [];
-    const vistos = new Set();
-
+    const add = (catId, subId, label, cls) => {
+      if (!chips.some(c => c.catId === catId && c.subId === subId)) chips.push({ catId, subId, label, cls });
+    };
     const sug = classificar(tx.desc, tx.valor);
-    if (sug && sug.catId) {
-      const key = sug.subId ? `${sug.catId}:${sug.subId}` : sug.catId;
-      vistos.add(key);
-      chips.push({
-        label: `✦ ${labelCat(sug.catId, sug.subId)}`,
-        catId: sug.catId,
-        subId: sug.subId || '',
-        cls: 'qchip qchip-ia'
-      });
-    }
-
-    const tipoAlvo = tx.valor > 0 ? 'receita' : 'gasto';
-    for (const c of state.categorias) {
-      if (c.tipo !== tipoAlvo) continue;
-      if (vistos.has(c.id)) continue;
-      vistos.add(c.id);
-      chips.push({ label: c.nome, catId: c.id, subId: '', cls: 'qchip' });
-      if (chips.length >= 3) break;
-    }
-
-    if (state.categorias.some(c => c.id === 'transf')) {
-      chips.push({ label: 'Transf. / Fatura', catId: 'transf', subId: '', cls: 'qchip qchip-out' });
-    }
+    if (sug) add(sug.catId, sug.subId || '', `✦ ${labelCat(sug.catId, sug.subId)}`, 'qchip qchip-ia');
+    const uso = usoPorSinal[tx.valor > 0 ? 1 : -1];
+    state.categorias
+      .filter(c => c.tipo !== 'mov' && tipoCombina(c, tx.valor) && (c.id !== 'pix' || / PIX /.test(textoBusca(tx.desc))))
+      .sort((a, b) => (uso[b.id] || 0) - (uso[a.id] || 0))
+      .forEach(c => { if (chips.length < 3) add(c.id, '', c.nome, 'qchip'); });
     return chips;
   }
 
@@ -1475,6 +1409,13 @@
     }
 
     const hoje = hojeStr();
+    const usoPorSinal = { 1: {}, '-1': {} };
+    for (const t of state.lancamentos) {
+      if (t.catId && ORIGENS_CONFIAVEIS.has(t.catOrigem)) {
+        const u = usoPorSinal[t.valor > 0 ? 1 : -1];
+        u[t.catId] = (u[t.catId] || 0) + 1;
+      }
+    }
     ul.innerHTML = visiveis.map(tx => {
       const dia = tx.data ? tx.data.slice(8, 10) : '--';
       const mesC = tx.data ? labelMesCurto(tx.data.slice(0, 7)) : '';
@@ -1491,15 +1432,14 @@
 
       let chipsHtml = '';
       if (!cat) {
-        const chips = sugerirChipsTriagem(tx);
+        const chips = sugerirChipsTriagem(tx, usoPorSinal);
         chipsHtml = `
           <div class="qcats">
             ${chips.map(ch => `<button type="button" class="${ch.cls}" data-qcat="${esc(ch.catId)}" data-qsub="${esc(ch.subId)}">${esc(ch.label)}</button>`).join('')}
-            ${tx.valor > 0 ? `<button type="button" class="qchip qchip-rateio" data-qrateio="1">Rateio / Abater</button>` : ''}
-            <button type="button" class="qchip qchip-out" data-qmais="1">Mais…</button>
+            <button type="button" class="qchip qchip-out" data-qmais="1">Outra…</button>
           </div>
         `;
-      } else if (tx.valor > 0 && cat.tipo !== 'mov' && (tx.usadoAbate || 0) === 0 && fSem) {
+      } else if (tx.valor >= 5 && cat.tipo !== 'mov' && (tx.usadoAbate || 0) === 0 && fSem) {
         chipsHtml = `
           <div class="qcats">
             <button type="button" class="qchip qchip-rateio" data-qrateio="1">Rateio / Abater</button>
@@ -1538,6 +1478,7 @@
           e.stopPropagation();
           tx.catId = btn.dataset.qcat;
           tx.subId = btn.dataset.qsub || '';
+          tx.catOrigem = 'usuario';
           await dbPutLanc(tx);
           treinarIA();
           toast(`Classificado em ${labelCat(tx.catId, tx.subId)}`);
@@ -1566,25 +1507,41 @@
   /* ========================================================================
      Importação OFX e CSV
      ======================================================================== */
+  /** UTF-8 se o arquivo for UTF-8 válido; senão windows-1252 (não confia no CHARSET do cabeçalho). */
   async function lerArquivoTexto(file) {
     const buf = await file.arrayBuffer();
-    let txt = new TextDecoder('utf-8').decode(buf);
-    if (txt.includes('\uFFFD') || /CHARSET:\s*1252|ISO-8859-1/i.test(txt.slice(0, 400))) {
+    let txt;
+    try {
+      txt = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    } catch {
       txt = new TextDecoder('windows-1252').decode(buf);
     }
-    return txt.replace(/^\uFEFF/, '');
+    return txt.replace(/^﻿/, '');
+  }
+
+  // No OFX do BB, NAME é o tipo ("Compra com Cartão") e MEMO a loja ou pessoa, com data, hora e CPF/CNPJ na frente.
+  const RE_TIPO_BANCO = /^(COMPRA COM CARTAO|COMPRA NO DEBITO|PIX ENVIADO|PIX RECEBIDO|PIX|PAGAMENTO DE BOLETO|PAGAMENTO|TED|DOC|TRANSFERENCIA|SAQUE|DEPOSITO)\b/;
+  function limparContraparte(s) {
+    return String(s || '')
+      .replace(/^\s*\d{2}\/\d{2}(\/\d{2,4})?\s+\d{2}:\d{2}\s*/, '')
+      .replace(/^\s*[\d.\/-]{8,}\s+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function limparDescOFX(name, memo) {
-    const n = String(name || '').trim();
-    const m = String(memo || '').trim();
+    const n = limparContraparte(name);
+    const m = limparContraparte(memo);
     if (!n && !m) return 'Lançamento OFX';
     if (!n) return m;
     if (!m || norm(n) === norm(m)) return n;
-    if (/^(COMPRA COM CARTAO|PIX - ENVIADO|PIX - RECEBIDO|PAGAMENTO|DEBITO|CREDITO)/i.test(norm(n))) {
-      return `${m} · ${n}`;
-    }
-    return `${n} · ${m}`;
+    return RE_TIPO_BANCO.test(norm(n)) ? `${m} · ${n}` : `${n} · ${m}`;
+  }
+
+  /** Mesma limpeza para descrições salvas por versões anteriores ("Pix - Enviado · 04/09 00:14 50.085.213 NOME"). */
+  function limparDescricao(desc) {
+    const partes = String(desc || '').split(' · ');
+    return partes.length === 2 ? limparDescOFX(partes[0], partes[1]) : (limparContraparte(desc) || desc);
   }
 
   function parseOFX(txt, fileName) {
@@ -1763,7 +1720,7 @@
     const itens = [];
     for (const r of parsed.rows) {
       const dt = parseData(r[iData]);
-      const desc = String(r[iDesc] || '').trim();
+      const desc = String(r[iDesc] || '').replace(/\s+/g, ' ').trim();
       if (!dt || !desc) continue;
 
       let val = NaN;
@@ -1817,9 +1774,11 @@
 
   async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null }) {
     if (typeof saldoExtrato === 'number' && Number.isFinite(saldoExtrato)) {
-      if (!conta.saldoExtratoData || !saldoExtratoData || saldoExtratoData >= conta.saldoExtratoData) {
+      const data = saldoExtratoData || hojeStr();
+      conta.saldos = { ...(conta.saldos || {}), [data]: saldoExtrato };
+      if (!conta.saldoExtratoData || data >= conta.saldoExtratoData) {
         conta.saldoExtrato = saldoExtrato;
-        conta.saldoExtratoData = saldoExtratoData || hojeStr();
+        conta.saldoExtratoData = data;
         conta.saldoInicialManual = false;
       }
     }
@@ -1828,14 +1787,13 @@
     const fitidsExistentes = new Set();
     for (const tx of state.lancamentos) {
       if (tx.contaId !== conta.id) continue;
-      if (tx.fitid) fitidsExistentes.add(tx.fitid);
+      if (tx.fitid) fitidsExistentes.add(`${tx.fitid}|${tx.data}|${Math.round(tx.valor * 100)}`);
       if (tx.hashImport) chavesExistentes.add(tx.hashImport);
     }
 
     const occNoArquivo = new Map();
     const novos = [];
     let duplicados = 0;
-    let autoClassificados = 0;
 
     for (const it of itens) {
       const centavos = Math.round(it.valor * 100);
@@ -1843,24 +1801,17 @@
       const occ = (occNoArquivo.get(baseKey) || 0) + 1;
       occNoArquivo.set(baseKey, occ);
       const hashImport = `${baseKey}#${occ}`;
+      // Alguns bancos repetem o FITID em lançamentos diferentes: compara junto com data e valor.
+      const chaveFit = it.fitid ? `${it.fitid}|${it.data}|${centavos}` : '';
 
-      if (it.fitid) {
-        if (fitidsExistentes.has(it.fitid)) {
-          duplicados++;
-          continue;
-        }
-        fitidsExistentes.add(it.fitid);
-      } else {
-        if (chavesExistentes.has(hashImport)) {
-          duplicados++;
-          continue;
-        }
+      if (chaveFit ? fitidsExistentes.has(chaveFit) : chavesExistentes.has(hashImport)) {
+        duplicados++;
+        continue;
       }
+      if (chaveFit) fitidsExistentes.add(chaveFit);
       chavesExistentes.add(hashImport);
 
-      const sug = classificar(it.desc, it.valor);
-      if (sug && sug.catId) autoClassificados++;
-
+      const sug = classificarPorRegra(it.desc, it.valor);
       novos.push({
         id: uid('tx'),
         contaId: conta.id,
@@ -1868,7 +1819,8 @@
         desc: it.desc,
         valor: it.valor,
         catId: sug ? sug.catId : '',
-        subId: sug ? (sug.subId || '') : '',
+        subId: sug ? sug.subId : '',
+        catOrigem: sug ? 'regra' : '',
         parcela: it.parcela || '',
         fitid: it.fitid || '',
         hashImport
@@ -1876,25 +1828,20 @@
     }
 
     state.lancamentos.push(...novos);
-    const paresTransf = conciliarTransferencias();
-    for (const c of state.contas) {
-      recalcularSaldoInicialPorExtrato(c);
-    }
+    const conciliados = conciliarTransferencias();
+    for (const c of state.contas) recalcularSaldoInicialPorExtrato(c);
 
     await kvSet('contas', state.contas);
-    await dbPutLanc(state.lancamentos);
+    await dbPutLanc([...new Set([...novos, ...conciliados])]);
     treinarIA();
 
-    if (novos.length) {
-      const maxData = novos.map(x => x.data).sort().pop();
-      if (maxData) state.mes = maxData.slice(0, 7);
-    }
+    if (novos.length) state.mes = novos.map(x => x.data).sort().pop().slice(0, 7);
 
     return {
       novos: novos.length,
       duplicados,
-      autoClassificados,
-      paresTransf,
+      autoClassificados: novos.filter(x => x.catId).length,
+      paresTransf: conciliados.length,
       contaNome: conta.nome
     };
   }
@@ -1912,7 +1859,7 @@
         <b>${res.novos}</b> ${res.novos === 1 ? 'lançamento importado' : 'lançamentos importados'}
         ${res.duplicados ? ` · ${res.duplicados} repetidos ignorados` : ''}
         ${res.autoClassificados ? ` · ${res.autoClassificados} classificados sozinhos` : ''}
-        ${res.paresTransf ? ` · ${res.paresTransf} transferência(s)/fatura(s) conciliada(s)` : ''}
+        ${res.paresTransf ? ` · ${res.paresTransf} transferências ou pagamentos de fatura reconhecidos` : ''}
       `;
     }
     box.prepend(div);
@@ -1985,7 +1932,7 @@
     let qtd = 0;
     for (const m of meses) {
       const r = resumoMes(m);
-      if (r.saiu > 0) {
+      if (r.gastos > 0) {
         soma += r.porCat[catId] || 0;
         qtd++;
       }
@@ -2181,6 +2128,10 @@
 
   function abrirModalLancamento(tx = null) {
     const novo = !tx;
+    // Lançamento que veio do extrato: data, valor, conta e sentido (entrou/saiu) são os do banco.
+    const importado = Boolean(tx && (tx.fitid || tx.hashImport));
+    const trava = importado ? 'disabled' : '';
+    const tipos = !importado ? ['gasto', 'receita', 'mov'] : tx.valor > 0 ? ['receita', 'mov'] : ['gasto', 'mov'];
     const tipoIni = tx
       ? (getCat(tx.catId)?.tipo === 'mov' ? 'mov' : tx.valor > 0 ? 'receita' : 'gasto')
       : 'gasto';
@@ -2191,7 +2142,10 @@
 
     abrirModal({
       titulo: novo ? 'Novo lançamento' : 'Editar lançamento',
-      desc: tx && tx.abatido > 0 ? `Já possui ${moed(tx.abatido)} abatidos por reembolso.` : '',
+      desc: [
+        importado ? `Veio do extrato de ${getConta(tx.contaId)?.nome || 'uma conta'}: data, valor e conta são os do banco.` : '',
+        tx && tx.abatido > 0 ? `Já possui ${moed(tx.abatido)} abatidos por reembolso.` : ''
+      ].filter(Boolean).join(' '),
       extraTexto: novo ? '' : 'Excluir',
       onExtra: novo ? null : async () => {
         const ct = getConta(tx.contaId);
@@ -2206,19 +2160,17 @@
       },
       html: `
         <div class="grid2">
-          <label>Data<input type="date" id="dlData" required value="${esc(tx ? tx.data : hojeStr())}"></label>
-          <label>Valor (R$)<input type="number" id="dlValor" inputmode="decimal" step="0.01" min="0.01" required value="${tx ? Math.abs(tx.valor).toFixed(2) : ''}"></label>
+          <label>Data<input type="date" id="dlData" required ${trava} value="${esc(tx ? tx.data : hojeStr())}"></label>
+          <label>Valor (R$)<input type="number" id="dlValor" inputmode="decimal" step="0.01" min="0.01" required ${trava} value="${tx ? Math.abs(tx.valor).toFixed(2) : ''}"></label>
         </div>
         <label>Descrição<input id="dlDesc" maxlength="100" required placeholder="Ex.: Supermercado, Salário, Pix..." value="${esc(tx ? tx.desc : '')}"></label>
         <div class="grid2">
           <label>Tipo
             <select id="dlTipo">
-              <option value="gasto" ${tipoIni === 'gasto' ? 'selected' : ''}>Gasto (saída)</option>
-              <option value="receita" ${tipoIni === 'receita' ? 'selected' : ''}>Entrada (receita)</option>
-              <option value="mov" ${tipoIni === 'mov' ? 'selected' : ''}>Não conta (transf./fatura)</option>
+              ${tipos.map(t => `<option value="${t}" ${tipoIni === t ? 'selected' : ''}>${{ gasto: 'Gasto (saída)', receita: 'Entrada (receita)', mov: 'Não conta (transf./fatura)' }[t]}</option>`).join('')}
             </select>
           </label>
-          <label>Conta ou cartão<select id="dlConta">${contaOpts}</select></label>
+          <label>Conta ou cartão<select id="dlConta" ${trava}>${contaOpts}</select></label>
         </div>
         <div class="grid2">
           <label>Categoria<select id="dlCat"></select></label>
@@ -2287,8 +2239,10 @@
           await kvSet('contas', state.contas);
         }
 
-        const sinal = tipo === 'receita' ? 1 : -1;
-        const valorFinal = round2(sinal * absVal);
+        // "Não conta" mantém o sentido: um Pix recebido de você mesma continua sendo entrada.
+        const sinal = importado ? Math.sign(tx.valor)
+          : tipo === 'receita' ? 1 : tipo === 'gasto' ? -1 : (tx ? Math.sign(tx.valor) || -1 : -1);
+        const valorFinal = importado ? tx.valor : round2(sinal * absVal);
 
         if (novo) {
           const nParc = Number($('#dlParc')?.value || 1);
@@ -2303,6 +2257,7 @@
               valor: valorFinal,
               catId,
               subId,
+              catOrigem: 'usuario',
               parcela: nParc > 1 ? `${p}/${nParc}` : '',
               rateioEsperado: p === 1 && rat > 0 ? round2(rat) : 0
             });
@@ -2312,10 +2267,13 @@
           state.mes = data.slice(0, 7);
         } else {
           const contaAntigaId = tx.contaId;
-          tx.data = data;
+          if (tx.catId !== catId || tx.subId !== subId) tx.catOrigem = 'usuario';
+          if (!importado) {
+            tx.data = data;
+            tx.valor = valorFinal;
+            tx.contaId = contaId;
+          }
           tx.desc = desc;
-          tx.valor = valorFinal;
-          tx.contaId = contaId;
           tx.catId = catId;
           tx.subId = subId;
           tx.rateioEsperado = tipo === 'gasto' ? round2(rat) : 0;
@@ -2402,7 +2360,7 @@
 
         alvo.abatido = round2((Number(alvo.abatido) || 0) + v);
         txEntrada.usadoAbate = round2((Number(txEntrada.usadoAbate) || 0) + v);
-        if (!txEntrada.catId) txEntrada.catId = 'transf';
+        if (!txEntrada.catId) Object.assign(txEntrada, { catId: 'transf', subId: '', catOrigem: 'usuario' });
 
         await dbPutLanc([alvo, txEntrada]);
         toast(`Abatido ${moed(v)} em ${alvo.desc}`);
@@ -2482,13 +2440,9 @@
           }
         }
         if (conta.titular) {
-          for (const tx of state.lancamentos) {
-            if (!tx.catId && pareceMesmaTitularidade(norm(tx.desc))) {
-              tx.catId = 'transf';
-              tx.subId = '';
-            }
-          }
-          await dbPutLanc(state.lancamentos);
+          const mudados = state.lancamentos.filter(tx => !tx.catId && pareceMesmaTitularidade(norm(tx.desc)));
+          for (const tx of mudados) Object.assign(tx, { catId: 'transf', subId: '', catOrigem: 'regra' });
+          await dbPutLanc(mudados);
         }
         await kvSet('contas', state.contas);
         toast('Conta atualizada');
@@ -2584,6 +2538,16 @@
   /* ========================================================================
      Backup, Exportação CSV e Dados de Exemplo
      ======================================================================== */
+  function baixar(nome, conteudo, tipo) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+    a.download = nome;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
   function exportarBackup() {
     const payload = {
       app: 'Bolso',
@@ -2596,12 +2560,7 @@
       fixasOcultas: state.fixasOcultas,
       lancamentos: state.lancamentos
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `bolso-backup-${hojeStr()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    baixar(`bolso-backup-${hojeStr()}.json`, JSON.stringify(payload), 'application/json');
     localStorage.setItem('bolso-ultimo-backup', String(Date.now()));
     toast('Cópia de segurança salva');
     render();
@@ -2668,12 +2627,7 @@
         tx.parcela || ''
       ].join(';'));
     }
-    const blob = new Blob(['\uFEFF' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `bolso-lancamentos-${hojeStr()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    baixar(`bolso-lancamentos-${hojeStr()}.csv`, '\uFEFF' + linhas.join('\r\n'), 'text/csv;charset=utf-8');
     toast('CSV exportado');
   }
 
@@ -2714,6 +2668,7 @@
     }
     lancs.push({ id: uid('ex'), contaId: 'ex_cc', data: `${state.mes}-17`, desc: 'PIX ENVIADO CAFETERIA CENTRAL', valor: -32.50, catId: '', subId: '' });
 
+    for (const tx of lancs) if (tx.catId) tx.catOrigem = 'usuario';
     state.lancamentos = lancs;
     treinarIA();
     render();

@@ -9,7 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="Bolso">
   <title>Bolso</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/mask.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem('bolso-tema');if(t==='claro'||t==='escuro')document.documentElement.dataset.theme=t==='claro'?'light':'dark'}catch(e){}</script>
   <link rel="stylesheet" href="app.css">
 </head>
@@ -46,6 +47,7 @@
       </div>
 
       <div id="painel" class="painel-grid" hidden>
+        <div class="aviso" id="avisoRefazer" hidden></div>
         <div class="aviso" id="avisoRevisar" hidden></div>
         <div class="aviso" id="avisoBackup" hidden></div>
 
@@ -139,6 +141,12 @@
         <dl>
           <dt>OFX (recomendado)</dt>
           <dd>No internet banking ou app do banco, entre em <b>Extrato</b> ou <b>Fatura</b>, escolha o período e procure por <b>Exportar → OFX</b> (ou Money 2000). Ele já traz a conta e os sinais certos.</dd>
+          <dt>Banco do Brasil</dt>
+          <dd>No site do BB: Conta corrente › Extrato › escolha o mês › ícone de salvar › <b>OFX (Money 2000+)</b>. Cartão Ourocard: Cartões › Fatura › salvar em OFX.</dd>
+          <dt>XP</dt>
+          <dd>Conta: Extrato › Exportar › <b>OFX</b>. A fatura do cartão XP sai em <b>CSV</b> (Cartão › Fatura › Exportar).</dd>
+          <dt>Bradesco, Santander, Caixa, Sicoob</dt>
+          <dd>No site do banco pelo computador: Extrato (ou Fatura) › Exportar ou Salvar como › <b>OFX</b> (às vezes chamado de “Money”).</dd>
           <dt>CSV (Nubank, Inter, C6, Itaú, BTG…)</dt>
           <dd>Exporte o extrato ou fatura em <b>CSV</b>. O Bolso reconhece automaticamente os formatos dos principais bancos e permite conferir antes de salvar.</dd>
         </dl>

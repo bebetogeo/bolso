@@ -1,11 +1,15 @@
-const CACHE = 'bolso-v1.7.3';
+const CACHE = 'bolso-v1.8.0';
 const ATIVOS = [
   './',
   './index.html',
   './app.css',
   './app.js',
   './manifest.webmanifest',
-  './icons/mask.svg'
+  './icons/mask.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', event => {
@@ -43,6 +47,6 @@ self.addEventListener('fetch', event => {
         }
         return res;
       })
-      .catch(() => caches.match(req).then(cached => cached || caches.match('./index.html')))
+      .catch(() => caches.match(req, { ignoreSearch: true }).then(cached => cached || caches.match('./index.html')))
   );
 });

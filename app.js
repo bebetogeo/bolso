@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.0.0';
+  const VERSAO = '2.0.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -975,19 +975,28 @@
     if (!bancos.length) return;
     const l = linhaSaldo(state.mes);
     const dif = round2(l.fim - l.ini);
+    // Saldo no fim de cada mês (o mês aberto, até hoje): um ponto por mês, com o valor em cima e o mês embaixo.
     const pontos = meses.map(m => linhaSaldo(m).fim);
-    if (pontos.length === 1) pontos.unshift(l.ini);
     const lo = Math.min(...pontos);
     const hi = Math.max(...pontos);
-    const y = v => (hi === lo ? 20 : Math.round(34 - ((v - lo) / (hi - lo)) * 28));
-    const x = i => Math.round(5 + (i / Math.max(1, pontos.length - 1)) * 250);
-    const desde = meses.length > 1 ? `${labelMesCurto(meses[0])} → ${labelMesCurto(state.mes)}: de ${moed(pontos[0], true)} para ${moed(l.fim, true)}` : '';
+    const y = v => (hi === lo ? 52 : Math.round(30 + (1 - (v - lo) / (hi - lo)) * 44));
+    const x = i => Math.round(26 + (i / Math.max(1, pontos.length - 1)) * 248);
+    const curto = v => (Math.abs(v) >= 1000
+      ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
+      : Math.round(v).toLocaleString('pt-BR'));
+    const grafico = pontos.length < 2 ? '' : `
+      <svg class="spark" viewBox="0 0 300 104" aria-hidden="true">
+        <polyline points="${pontos.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/>
+        ${pontos.map((v, i) => `
+          <circle cx="${x(i)}" cy="${y(v)}" r="4.5" class="${i === pontos.length - 1 ? 'pt-ult' : 'pt'}"/>
+          <text x="${x(i)}" y="${y(v) - 11}" class="pt-v">${curto(v)}</text>
+          <text x="${x(i)}" y="98" class="pt-m">${esc(labelMesCurto(meses[i]))}</text>`).join('')}
+      </svg>`;
     el.innerHTML = `
       <div class="cd-top"><span class="cd-lb">Dinheiro nas contas</span>${bancos.length > 1 ? `<span class="cd-lb">${bancos.map(apelido).join(' + ')}</span>` : ''}</div>
       <p class="saldo-big num">${moed(l.fim)}</p>
       <span class="pilula ${dif < 0 ? 'p-neg' : 'p-pos'} num">${dif < 0 ? '−' : '+'}${moed(Math.abs(dif))} ${state.mes === mesAtualStr() ? 'neste mês' : `em ${mesNome(state.mes).toLowerCase()}`}</span>
-      ${pontos.length > 1 ? `<svg class="spark" viewBox="0 0 260 40" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pontos.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/></svg>` : ''}
-      ${desde ? `<p class="cd-lb">${desde}</p>` : ''}`;
+      ${grafico}`;
   }
 
   function renderEntrouSaiu(res) {

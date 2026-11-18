@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '1.9.0';
+  const VERSAO = '1.10.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -901,6 +901,7 @@
   const semRS = v => moed(v).replace(/R\$\s?/, '');
   const apelido = c => /BRASIL/i.test(c.nome) ? 'BB'
     : c.nome.replace(/\s*\(.*\)$/, '').replace(/^Banco\s+/i, '').replace(/\s+S\.?A\.?$/i, '');
+  const nomeCurto = c => c.nome.replace(/\s*\(.*\)$/, '').replace(/\s+S\.?A\.?$/i, '');
 
   /** Meses com lançamento nas contas dadas, até o mês aberto (no máximo 6), sempre incluindo o mês aberto. */
   function mesesDasContas(ids) {
@@ -1000,41 +1001,99 @@
     });
   }
 
-  /** Uma tabela por conta (quando há mais de uma) e o resumo de cada cartão. */
+  /**
+   * Fatura do cartão a mostrar no mês aberto. Com faturas importadas por arquivo (o nome traz o vencimento),
+   * usa a última que vence até o fim do mês; senão, o ciclo pelo dia de fechamento.
+   */
+  function faturaDoCartao(c, ym) {
+    const doCartao = state.lancamentos.filter(tx => tx.contaId === c.id && !ehMov(tx));
+    const total = lista => round2(lista.reduce((acc, tx) => acc - tx.valor, 0));
+    const vencs = [...new Set(doCartao.map(tx => tx.fatura).filter(Boolean))].filter(v => v <= fimDoMes(ym)).sort();
+    if (vencs.length) {
+      const venc = vencs.pop();
+      const itens = doCartao.filter(tx => tx.fatura === venc);
+      const ultimaCompra = itens.map(tx => tx.data).sort().pop() || venc;
+      const depois = doCartao.filter(tx => !tx.fatura && tx.data > ultimaCompra && tx.data <= ateNoMes(ym));
+      const valor = total(itens);
+      const dia = d => Date.parse(`${d}T12:00:00Z`) / 86400000;
+      const perto = tx => dia(tx.data) - dia(venc) <= 10 && dia(venc) - dia(tx.data) <= 25;
+      const pgto = state.lancamentos.find(tx => perto(tx) && (
+        (ehPagamentoFatura(tx) && Math.abs(tx.valor + valor) <= 0.05) ||
+        (tx.contaId === c.id && tx.valor > 0 && ehMov(tx) && Math.abs(tx.valor - valor) <= 0.05)));
+      return { titulo: `Fatura que vence ${dataBR(venc)}`, valor, pgto, depois: depois.length ? total(depois) : 0, nDepois: depois.length };
+    }
+    const dia = Math.min(Number(c.fechaDia) || 20, 28);
+    const fecha = m => `${m}-${String(dia).padStart(2, '0')}`;
+    const de = fecha(addMes(ym, -1));
+    const ate = fecha(ym);
+    const itens = doCartao.filter(tx => tx.data > de && tx.data <= ate);
+    const aberta = ym === mesAtualStr() && hojeStr() <= ate;
+    return { titulo: aberta ? `Fatura atual · fecha ${dataBR(ate)}` : `Fatura que fechou em ${dataBR(ate)}`, valor: total(itens), pgto: null, depois: 0, nDepois: 0, semArquivo: true };
+  }
+
+  /** Um box por conta (saldo e movimento do mês) e por cartão (fatura); tocar no box da conta abre o mês a mês dela. */
   function renderContasStrip() {
     const el = $('#contasStrip');
-    const bancos = contasBanco();
-    const mostrar = state.contas.filter(c => c.tipo === 'cartao' || bancos.length > 1);
-    el.hidden = !mostrar.length;
+    el.hidden = !state.contas.length;
+    if (!state.contas.length) return;
     const ym = state.mes;
+    const bancos = contasBanco();
 
-    el.innerHTML = mostrar.map(c => {
+    const boxes = state.contas.map(c => {
       if (c.tipo === 'cartao') {
-        const doMes = lancamentosDoMes(ym).filter(tx => tx.contaId === c.id);
-        const compras = doMes.filter(tx => tx.valor < 0 && !ehMov(tx)).reduce((acc, tx) => acc - tx.valor, 0);
-        const pagamentos = doMes.filter(tx => tx.valor > 0 && ehMov(tx)).reduce((acc, tx) => acc + tx.valor, 0);
+        const f = faturaDoCartao(c, ym);
+        const situacao = f.pgto ? `<span class="badge-ok">✓ paga em ${dataBR(f.pgto.data)}</span>`
+          : f.semArquivo ? '' : '<span class="badge-warn">em aberto</span>';
         return `
-          <div class="conta-pill" data-conta="${esc(c.id)}">
-            <div class="cn"><span>💳 ${esc(c.nome)}</span><span class="csub">compras no mês</span></div>
-            <div class="cv num">${moed(compras)}</div>
-            ${pagamentos ? `<div class="csub">Fatura paga no mês: ${moed(pagamentos)}</div>` : ''}
-          </div>`;
+          <button type="button" class="conta-box" data-conta="${esc(c.id)}">
+            <span class="cb-nome" title="${esc(c.nome)}">💳 ${esc(nomeCurto(c))}</span>
+            <span class="cb-valor num">${moed(f.valor)}</span>
+            <span class="cb-sub">${f.titulo} ${situacao}</span>
+            ${f.nDepois ? `<span class="cb-sub">+ ${moed(f.depois)} em ${f.nDepois} ${f.nDepois === 1 ? 'compra' : 'compras'} depois dela</span>` : ''}
+          </button>`;
       }
+      const l = linhaSaldo(ym, c);
+      return `
+        <button type="button" class="conta-box" data-abrir="${esc(c.id)}">
+          <span class="cb-nome" title="${esc(c.nome)}">🏦 ${esc(nomeCurto(c))}</span>
+          <span class="cb-valor num ${l.fim < 0 ? 'neg' : ''}">${moed(l.fim)}${l.ext ? (l.confere ? ' <span class="badge-ok">✓</span>' : ' <span class="badge-warn">≠</span>') : ''}</span>
+          <span class="cb-sub num">no mês: <span class="pos">+${semRS(l.ent)}</span> · −${semRS(l.sai)}</span>
+        </button>`;
+    }).join('');
+
+    // Mês a mês de cada conta, recolhido; com uma conta só, a tabela do Saldo total já é a dela.
+    const tabelas = bancos.length < 2 ? '' : bancos.map(c => {
       const linhas = mesesDasContas([c.id]).map(m => linhaSaldo(m, c));
       const atual = linhas.find(l => l.m === ym);
       const nota = !atual.ext ? 'Importe o extrato deste mês para conferir com o saldo do banco.'
         : atual.confere ? `✓ Saldo igual ao do extrato do banco em ${dataBR(atual.ext.data)}.`
           : `O extrato do banco em ${dataBR(atual.ext.data)} diz ${moed(atual.ext.valor)}; aqui está ${moed(saldoEm(c, atual.ext.data))}. Falta importar algum período ou há lançamento duplicado.`;
       return `
-        <div class="conta-pill conta-tab">
-          <div class="cn"><span>🏦 ${esc(c.nome)}</span><button type="button" class="lnk" data-conta="${esc(c.id)}">Ver lançamentos</button></div>
+        <details class="conta-pill conta-tab" id="tab-${esc(c.id)}" ${state.contaAberta === c.id ? 'open' : ''}>
+          <summary class="cn"><span>Mês a mês · ${esc(nomeCurto(c))}</span></summary>
           ${tabelaSaldo(linhas)}
-          <div class="csub">${nota}</div>
-        </div>`;
+          <div class="csub">${nota} <button type="button" class="lnk" data-conta="${esc(c.id)}">Ver lançamentos</button></div>
+        </details>`;
     }).join('');
 
-    $$('.conta-pill[data-conta], button[data-conta]', el).forEach(b => {
-      b.onclick = () => irParaLancamentos({ conta: b.dataset.conta });
+    el.innerHTML = `<div class="contas-grid">${boxes}</div>${tabelas}`;
+
+    $$('[data-conta]', el).forEach(b => {
+      b.onclick = e => { e.preventDefault(); irParaLancamentos({ conta: b.dataset.conta }); };
+    });
+    $$('[data-abrir]', el).forEach(b => {
+      b.onclick = () => {
+        const det = $(`#tab-${b.dataset.abrir}`, el);
+        if (!det) return irParaLancamentos({ conta: b.dataset.abrir });
+        det.open = true;
+        det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      };
+    });
+    $$('details.conta-tab', el).forEach(det => {
+      det.ontoggle = () => {
+        if (det.open) state.contaAberta = det.id.slice(4);
+        else if (state.contaAberta === det.id.slice(4)) state.contaAberta = '';
+      };
     });
     $$('tr[data-mes]', el).forEach(tr => {
       tr.onclick = () => { state.mes = tr.dataset.mes; render(); };
@@ -1716,7 +1775,14 @@
     `;
   }
 
-  async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null }) {
+  /** "Fatura2026-11-20.csv" → "2026-11-20": nas faturas de cartão, a data do nome é o vencimento. */
+  function vencimentoDoNome(nome) {
+    const m = String(nome || '').match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})/);
+    return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31 ? `${m[1]}-${m[2]}-${m[3]}` : '';
+  }
+
+  async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null, fatura = '' }) {
+    if (conta.tipo !== 'cartao') fatura = '';
     if (typeof saldoExtrato === 'number' && Number.isFinite(saldoExtrato)) {
       const data = saldoExtratoData || hojeStr();
       conta.saldos = { ...(conta.saldos || {}), [data]: saldoExtrato };
@@ -1727,13 +1793,14 @@
       }
     }
 
-    const chavesExistentes = new Set();
-    const fitidsExistentes = new Set();
+    // Chave de cada lançamento já importado nesta conta → o lançamento (para não duplicar).
+    const existentes = new Map();
     for (const tx of state.lancamentos) {
       if (tx.contaId !== conta.id) continue;
-      if (tx.fitid) fitidsExistentes.add(`${tx.fitid}|${tx.data}|${Math.round(tx.valor * 100)}`);
-      if (tx.hashImport) chavesExistentes.add(tx.hashImport);
+      if (tx.fitid) existentes.set(`fit|${tx.fitid}|${tx.data}|${Math.round(tx.valor * 100)}`, tx);
+      if (tx.hashImport) existentes.set(tx.hashImport, tx);
     }
+    const marcados = [];
 
     const occNoArquivo = new Map();
     const novos = [];
@@ -1746,14 +1813,19 @@
       occNoArquivo.set(baseKey, occ);
       const hashImport = `${baseKey}#${occ}`;
       // Alguns bancos repetem o FITID em lançamentos diferentes: compara junto com data e valor.
-      const chaveFit = it.fitid ? `${it.fitid}|${it.data}|${centavos}` : '';
+      const chave = it.fitid ? `fit|${it.fitid}|${it.data}|${centavos}` : hashImport;
 
-      if (chaveFit ? fitidsExistentes.has(chaveFit) : chavesExistentes.has(hashImport)) {
+      const jaTem = existentes.get(chave);
+      if (jaTem) {
         duplicados++;
+        // Reimportar uma fatura antiga marca a qual fatura cada compra pertence.
+        if (fatura && !jaTem.fatura) {
+          jaTem.fatura = fatura;
+          marcados.push(jaTem);
+        }
         continue;
       }
-      if (chaveFit) fitidsExistentes.add(chaveFit);
-      chavesExistentes.add(hashImport);
+      existentes.set(chave, true);
 
       const sug = classificarPorRegra(it.desc, it.valor);
       novos.push({
@@ -1767,6 +1839,7 @@
         catOrigem: sug ? 'regra' : '',
         parcela: it.parcela || '',
         fitid: it.fitid || '',
+        fatura,
         hashImport
       });
     }
@@ -1776,7 +1849,7 @@
     for (const c of state.contas) recalcularSaldoInicialPorExtrato(c);
 
     await kvSet('contas', state.contas);
-    await dbPutLanc([...new Set([...novos, ...conciliados])]);
+    await dbPutLanc([...new Set([...novos, ...conciliados, ...marcados])]);
     treinarIA();
 
     if (novos.length) state.mes = novos.map(x => x.data).sort().pop().slice(0, 7);
@@ -1838,6 +1911,7 @@
           }
           const res = await importarItens({
             conta,
+            fatura: vencimentoDoNome(file.name),
             itens: parsed.itens,
             saldoExtrato: parsed.saldoExtrato,
             saldoExtratoData: parsed.saldoExtratoData
@@ -2750,7 +2824,7 @@
       state.csvAtual = null;
       $('#csvMap').hidden = true;
 
-      const res = await importarItens({ conta, itens });
+      const res = await importarItens({ conta, itens, fatura: vencimentoDoNome(fileName) });
       adicionarResultadoImport(fileName, res);
       avancarFilaCSV();
       render();

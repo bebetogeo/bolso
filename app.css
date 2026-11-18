@@ -1521,3 +1521,17 @@ dialog#dlg::backdrop {
 .saldo-det { font-size: 0.8rem; line-height: 1.45; }
 .hbars .s-stack { width: 60%; max-width: 34px; }
 .s-seg { flex-shrink: 0; }
+
+/* Boxes por conta e cartão, logo abaixo do saldo total */
+.contas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.conta-box { appearance: none; font: inherit; color: inherit; text-align: left; background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio); padding: 12px 14px; box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
+.conta-box:active { background: var(--card-alt); }
+.conta-box:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; }
+.cb-nome { font-size: 0.8rem; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-valor { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+.cb-sub { font-size: 0.74rem; color: var(--mut); line-height: 1.35; }
+details.conta-tab > summary { list-style: none; cursor: pointer; }
+details.conta-tab > summary::-webkit-details-marker { display: none; }
+details.conta-tab > summary span::after { content: ' ▸'; color: var(--mut); }
+details.conta-tab[open] > summary span::after { content: ' ▾'; }
+.contas-strip { gap: 10px; }

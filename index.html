@@ -40,7 +40,7 @@
     <section class="view" data-view="painel">
       <div id="vazio" class="vazio" hidden>
         <h1>Seu dinheiro, sem complicação</h1>
-        <p>Importe o extrato da sua conta ou fatura do cartão (OFX ou CSV). Tudo fica guardado só neste aparelho.</p>
+        <p>Importe o extrato da sua conta ou fatura do cartão (OFX, CSV ou PDF). Tudo fica guardado só neste aparelho.</p>
         <div class="row">
           <button type="button" class="btn pri" data-go="importar">Importar extrato</button>
           <button type="button" class="btn" id="btnExemplo">Ver com dados de exemplo</button>
@@ -88,10 +88,10 @@
     <section class="view" data-view="importar" hidden>
       <div class="card">
         <h2>Importar extrato ou fatura</h2>
-        <p class="mut">Escolha um ou mais arquivos <b>OFX</b> ou <b>CSV</b> baixados do seu banco ou cartão. Lançamentos repetidos são ignorados sozinhos.</p>
+        <p class="mut">Escolha um ou mais arquivos <b>OFX</b>, <b>CSV</b> ou <b>PDF</b> baixados do seu banco ou cartão. Lançamentos repetidos são ignorados sozinhos.</p>
         <label class="drop" id="drop">
           <span>Toque para escolher arquivos ou arraste para cá</span>
-          <input type="file" id="arquivo" multiple accept=".ofx,.csv,.txt,text/csv,application/x-ofx">
+          <input type="file" id="arquivo" multiple accept=".ofx,.csv,.txt,.pdf,text/csv,application/x-ofx,application/pdf">
         </label>
         <div id="importRes"></div>
       </div>
@@ -128,6 +128,8 @@
           <dd>Conta: Extrato › Exportar › <b>OFX</b>. A fatura do cartão XP sai em <b>CSV</b> (Cartão › Fatura › Exportar).</dd>
           <dt>Bradesco, Santander, Caixa, Sicoob</dt>
           <dd>No site do banco pelo computador: Extrato (ou Fatura) › Exportar ou Salvar como › <b>OFX</b> (às vezes chamado de “Money”).</dd>
+          <dt>Itaú no celular (PDF)</dt>
+          <dd>No app: Extrato › escolha o período › compartilhar ou salvar › <b>Arquivo PDF</b>. O Bolso lê o PDF aqui no aparelho e confere a soma com o saldo de cada dia. Outros bancos em PDF também podem funcionar; se não der, use OFX ou CSV.</dd>
           <dt>CSV (Nubank, Inter, C6, Itaú, BTG…)</dt>
           <dd>Exporte o extrato ou fatura em <b>CSV</b>. O Bolso reconhece automaticamente os formatos dos principais bancos e permite conferir antes de salvar.</dd>
         </dl>
@@ -255,6 +257,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script src="classificador.js"></script>
+  <script src="extrato-pdf.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

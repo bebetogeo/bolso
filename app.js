@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.2.0';
+  const VERSAO = '2.3.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -34,7 +34,7 @@
     'pets': 'PET SHOP|PETSHOP|PETZ|COBASI|PETLOVE|VETERIN|AGROPET',
     'tarifas': 'TARIFA|ANUIDADE|IOF=|JUROS=|MULTA=|IPTU|IPVA|DARF|DETRAN|LICENCIAMENTO|CARTORIO',
     'cuidados': 'SALAO|CABELEIR|BARBEARIA|MANICURE|ESMALTERIA|ESTETICA|DEPILACAO|BOTICARIO|NATURA=|SEPHORA',
-    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO',
+    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO|OPERACOES B3|COFRINHOS',
     'rendimentos': 'RENDIMENTO|JUROS SOBRE CAPITAL|DIVIDENDO|ESTORNO|DEVOLUCAO PIX|PIX ENVIO DEVOLVIDO|PIX REJEITADO|CASHBACK',
     'salario': 'SALARIO|PRO LABORE|PROVENTOS|FOLHA DE PAGAMENTO'
   };
@@ -1724,8 +1724,10 @@
     return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31 ? `${m[1]}-${m[2]}-${m[3]}` : '';
   }
 
-  async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null, fatura = '' }) {
+  async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null, fatura = '', saldos = null }) {
     if (conta.tipo !== 'cartao') fatura = '';
+    // Saldos de fim de dia que o extrato em PDF mostra (servem para conferir os meses).
+    if (saldos && Object.keys(saldos).length) conta.saldos = { ...(conta.saldos || {}), ...saldos };
     if (typeof saldoExtrato === 'number' && Number.isFinite(saldoExtrato)) {
       const data = saldoExtratoData || hojeStr();
       conta.saldos = { ...(conta.saldos || {}), [data]: saldoExtrato };
@@ -1806,10 +1808,16 @@
     };
   }
 
-  function adicionarResultadoImport(fileName, res, erro = '') {
+  function adicionarResultadoImport(fileName, res, erro = '', aguarde = '') {
     const box = $('#importRes');
+    // Troca o "Lendo…" do mesmo arquivo pelo resultado.
+    box.querySelectorAll('.res.lendo').forEach(el => { if (el.dataset.arq === fileName) el.remove(); });
     const div = document.createElement('div');
-    if (erro) {
+    if (aguarde) {
+      div.className = 'res lendo';
+      div.dataset.arq = fileName;
+      div.innerHTML = `<b>${esc(fileName)}</b><br>${esc(aguarde)}`;
+    } else if (erro) {
       div.className = 'res erro';
       div.innerHTML = `<b>${esc(fileName)}</b><br>${esc(erro)}`;
     } else {
@@ -1820,6 +1828,7 @@
         ${res.duplicados ? ` · ${res.duplicados} repetidos ignorados` : ''}
         ${res.autoClassificados ? ` · ${res.autoClassificados} classificados sozinhos` : ''}
         ${res.paresTransf ? ` · ${res.paresTransf} transferências ou pagamentos de fatura reconhecidos` : ''}
+        ${res.conferido ? `<br>${res.conferido}` : ''}
       `;
     }
     box.prepend(div);
@@ -1831,6 +1840,10 @@
 
     for (const file of files) {
       try {
+        if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+          await importarPDF(file);
+          continue;
+        }
         const txt = await lerArquivoTexto(file);
         const ehOFX = /\.ofx$/i.test(file.name) || /<OFX>|<STMTTRN>/i.test(txt);
 
@@ -1875,6 +1888,44 @@
 
     avancarFilaCSV();
     render();
+  }
+
+  /** Extrato em PDF: lido aqui mesmo (extrato-pdf.js), sem mandar o arquivo para lugar nenhum. */
+  async function importarPDF(file) {
+    const nome = file.name;
+    adicionarResultadoImport(nome, null, '', 'Lendo o PDF…');
+    let lido;
+    try {
+      lido = await BolsoPDF.ler(file, errou => window.prompt(errou
+        ? 'Senha incorreta. Digite a senha do PDF de novo:'
+        : 'Este PDF tem senha (alguns bancos usam parte do CPF). Digite a senha:'));
+    } catch (err) {
+      const senha = err && /Password/i.test(err.name || '');
+      adicionarResultadoImport(nome, null, senha ? 'O PDF tem senha e não foi aberto.' : `Não foi possível abrir o PDF: ${err.message || err}`);
+      return;
+    }
+    if (!lido.itens.length) {
+      adicionarResultadoImport(nome, null, lido.temTexto
+        ? 'Não encontrei lançamentos neste PDF. Se o banco tiver, prefira o extrato em OFX ou CSV.'
+        : 'Este PDF parece ser uma imagem (sem texto). Peça ao banco o extrato em OFX, CSV ou um PDF com texto.');
+      return;
+    }
+    let conta = state.contas.find(c => c.chaveOfx === lido.chaveConta);
+    if (!conta) {
+      conta = { id: uid('ct'), chaveOfx: lido.chaveConta, nome: lido.nomeConta, tipo: lido.tipoConta, saldoInicial: 0, fechaDia: null };
+      state.contas.push(conta);
+    }
+    const res = await importarItens({
+      conta,
+      itens: lido.itens,
+      saldos: lido.saldos,
+      saldoExtrato: lido.saldoExtrato,
+      saldoExtratoData: lido.saldoExtratoData
+    });
+    const { ok, erros } = lido.conferido;
+    if (ok && !erros) res.conferido = `✓ Conferido com os saldos do extrato (${ok} ${ok === 1 ? 'dia' : 'dias'}).`;
+    else if (erros) res.conferido = `⚠ Em ${erros} de ${ok + erros} dias a soma não bateu com o saldo do extrato. Confira os lançamentos desse período.`;
+    adicionarResultadoImport(nome, res);
   }
 
   function avancarFilaCSV() {

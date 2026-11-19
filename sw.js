@@ -1,10 +1,13 @@
-const CACHE = 'bolso-v2.2.0';
+const CACHE = 'bolso-v2.3.0';
 const ATIVOS = [
   './',
   './index.html',
   './app.css',
   './app.js',
   './classificador.js',
+  './extrato-pdf.js',
+  './vendor/pdf.min.js',
+  './vendor/pdf.worker.min.js',
   './manifest.webmanifest',
   './icons/mask.svg',
   './icons/icon-192.png',

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.0';
+  const VERSAO = '2.5.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -509,9 +509,12 @@
 
   // Texto da descrição com espaços nas pontas, para casar regras no começo das palavras.
   // "PostoBomBomLtda" → "Posto Bom Bom Ltda" (algumas maquininhas juntam as palavras).
-  const textoBusca = desc => ` ${norm(String(desc || '').replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2')).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
-  function casaRegra(alvo, texto, inteira) {
-    const t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
+  // Se um classificador.js antigo vier do cache junto com este app.js, segue sem a limpeza em vez de travar.
+  const limparPrefixos = desc => (BolsoIA.limparPrefixos ? BolsoIA.limparPrefixos(desc) : String(desc || ''));
+  const textoBusca = desc => ` ${norm(limparPrefixos(desc).replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2')).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  function casaRegra(alvo, texto, inteira, daUsuaria = false) {
+    let t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
+    if (daUsuaria && BolsoIA.semPrefixoRegra) t = BolsoIA.semPrefixoRegra(t);
     return Boolean(t) && alvo.includes(` ${t}${inteira ? ' ' : ''}`);
   }
   // Categoria de gasto não serve para dinheiro que entrou, e vice-versa.
@@ -522,7 +525,7 @@
     const alvo = textoBusca(desc);
     for (const r of state.regras) {
       const c = getCat(r.catId);
-      if (c && r.texto && casaRegra(alvo, r.texto, false)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
+      if (c && r.texto && casaRegra(alvo, r.texto, false, true)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
     }
     if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
     // Para saber se quem recebe é empresa, sem o banco que o Nubank põe no fim ("... - NU PAGAMENTOS - IP").
@@ -2467,7 +2470,7 @@
     if (!norm(texto)) return [];
     const sinal = tx ? Math.sign(tx.valor) : -1;
     return state.lancamentos.filter(x => x !== tx && x.catOrigem !== 'usuario' &&
-      Math.sign(x.valor) === sinal && casaRegra(textoBusca(x.desc), texto, false));
+      Math.sign(x.valor) === sinal && casaRegra(textoBusca(x.desc), texto, false, true));
   }
 
   /** Cria (ou troca) a regra e aplica a todos os lançamentos parecidos que ela não classificou à mão. */
@@ -3238,7 +3241,7 @@
       await kvSet('regras', state.regras);
       // Vale também para o que já está no app (menos o que ela classificou à mão).
       const lista = state.lancamentos.filter(x => x.catOrigem !== 'usuario' && tipoCombina(cat, x.valor) &&
-        casaRegra(textoBusca(x.desc), texto, false));
+        casaRegra(textoBusca(x.desc), texto, false, true));
       for (const x of lista) Object.assign(x, { catId, subId, catOrigem: 'regra' });
       await dbPutLanc(lista);
       treinarIA();

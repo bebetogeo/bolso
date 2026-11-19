@@ -29,9 +29,27 @@
     'SOLUCOES PARTICIPACOES ADMINISTRADORA'
   ).split(' ').filter(Boolean).forEach(w => STOP.add(w));
 
+  // Prefixos de maquininhas e intermediários antes do nome da loja ("MP *LOJA", "PAG*LOJA", "SUMUP *BAR"):
+  // não dizem o que foi comprado. Saem antes de procurar regra, de criar regra e de aprender.
+  // Só quando vêm com "*" logo depois (sem o "*", "REDE" ou "TON" podem ser parte do nome).
+  // IFD* fica: é o iFood e já diz a categoria.
+  const PREFIXOS = ('MERCADOPAGO|MERCPAGO|MERCADO PAGO|MP|PAGSEGURO|PAGSEG|PAGBANK|PAG|PG|TON|STONE|SUMUP|CIELO|' +
+    'GETNET|REDE|IZ|EBN|BPP|DL|DM|ZP|CAPPTA|PICPAY|PAYPAL|PP|INFINITEPAY|SAFRAPAY|LISTO|ZOOP|PAGARME|ADYEN|EC|SQ|NUPAY');
+  const RE_PREFIXO = new RegExp(`(^|[\\s·(-])(?:${PREFIXOS})\\s*\\*+\\s*`, 'gi');
+  function limparPrefixos(desc) {
+    return String(desc || '').replace(RE_PREFIXO, '$1').replace(/\s+/g, ' ').trim();
+  }
+  // Regras que ela criou antes desta limpeza guardaram o prefixo ("MP BENZADEUS"): sem o "*" no texto da
+  // regra, só os códigos que não são palavra de verdade saem dela.
+  const PREFIXOS_REGRA = new Set('MERCADOPAGO MERCPAGO MP PAGSEGURO PAGSEG PAG DL DM ZP IZ EBN BPP CAPPTA SUMUP PP SQ NUPAY PICPAY PAGARME'.split(' '));
+  function semPrefixoRegra(textoNorm) {
+    const ws = textoNorm.split(' ');
+    return ws.length > 1 && PREFIXOS_REGRA.has(ws[0]) ? ws.slice(1).join(' ') : textoNorm;
+  }
+
   /** Palavras da descrição que servem de pista (sem números soltos nem palavras genéricas). */
   function tokens(desc) {
-    return norm(desc).replace(/\*/g, ' ').split(' ')
+    return norm(limparPrefixos(desc)).replace(/\*/g, ' ').split(' ')
       .filter(t => t.length >= 3 && !/^\d+$/.test(t) && !STOP.has(t));
   }
 
@@ -119,7 +137,7 @@
    * medido com os lançamentos da Ana, as regras pegam 36 lançamentos de categoria errada em vez de 99.
    */
   function textoRegra(desc, palavras = 2) {
-    const nome = String(desc || '').split(' · ')[0];
+    const nome = limparPrefixos(desc).split(' · ')[0];
     const ws = norm(nome).replace(/\*/g, ' ').split(' ')
       .filter(t => t && !/^\d+$/.test(t) && !STOP_REGRA.has(t));
     return ws.length ? ws.slice(0, palavras).join(' ') : norm(desc).slice(0, 24);
@@ -148,5 +166,5 @@
     return ordem;
   }
 
-  g.BolsoIA = { norm, tokens, pistas, treinar, prever, textoRegra, botoes };
+  g.BolsoIA = { norm, tokens, pistas, treinar, prever, textoRegra, botoes, limparPrefixos, semPrefixoRegra };
 })(typeof window !== 'undefined' ? window : globalThis);

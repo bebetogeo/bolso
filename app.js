@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.4';
+  const VERSAO = '2.5.5';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -520,11 +520,24 @@
     const d = semBancoDestino(desc);
     return BolsoIA.limparPrefixos ? BolsoIA.limparPrefixos(d) : d;
   };
-  const textoBusca = desc => ` ${norm(limparPrefixos(desc).replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2')).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
-  function casaRegra(alvo, texto, inteira, daUsuaria = false) {
-    let t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
-    if (daUsuaria && BolsoIA.semPrefixoRegra) t = BolsoIA.semPrefixoRegra(t);
-    return Boolean(t) && alvo.includes(` ${t}${inteira ? ' ' : ''}`);
+  // O texto vai nas duas formas ("IFOOD" e, separado, "I FOOD"): separar só ajuda nomes colados como
+  // "PostoBomBomLtda", e sozinho quebrava "iFood", "YouTube", "iCloud".
+  const textoBusca = desc => {
+    const limpo = limparPrefixos(desc);
+    const so = t => norm(t).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
+    const inteiro = so(limpo);
+    const separado = so(limpo.replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2'));
+    return separado === inteiro ? ` ${inteiro} ` : ` ${inteiro} | ${separado} `;
+  };
+  function casaRegra(alvo, texto, inteira, daUsuaria = false, bruto = '') {
+    const t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
+    const casa = x => Boolean(x) && alvo.includes(` ${x}${inteira ? ' ' : ''}`);
+    if (casa(t)) return true;
+    if (!daUsuaria || !BolsoIA.semPrefixoRegra) return false;
+    const sem = BolsoIA.semPrefixoRegra(t);
+    if (sem === t) return false;
+    const codigo = t.split(' ')[0];
+    return new RegExp(`(^|[^A-Z0-9])${codigo}\\s*\\*`, 'i').test(String(bruto || '')) && casa(sem);
   }
   // Categoria de gasto não serve para dinheiro que entrou, e vice-versa.
   const tipoCombina = (cat, valor) => cat.tipo === 'mov' || (valor < 0 ? cat.tipo === 'gasto' : cat.tipo === 'receita');
@@ -534,16 +547,19 @@
     const alvo = textoBusca(desc);
     for (const r of state.regras) {
       const c = getCat(r.catId);
-      if (c && r.texto && casaRegra(alvo, r.texto, false, true)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
+      if (c && r.texto && casaRegra(alvo, r.texto, false, true, desc)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
     }
     if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
     // Para saber se quem recebe é empresa: sem o banco que o Nubank põe no fim ("... - NU PAGAMENTOS - IP").
     const quem = alvo;
+    let intermediario = false;
     for (const r of comGenericas ? [...REGRAS_PADRAO, ...REGRAS_GENERICAS] : REGRAS_PADRAO) {
       if (r.sinal && Math.sign(valor) !== r.sinal) continue;
-      if (r.pessoa && (RE_EMPRESA.test(quem) || RE_CNPJ.test(desc))) continue;
+      if (r.pessoa && (intermediario || RE_EMPRESA.test(quem) || RE_CNPJ.test(desc))) continue;
       if (!casaRegra(alvo, r.texto, r.inteira)) continue;
-      if (!r.catId) return null;
+      if (!r.catId) { intermediario = true; continue; }
+      // depois de um intermediário ("RENDIMENTOS MERCADO PAGO"), só o que não depende da loja
+      if (intermediario && !['transf', 'rendimentos', 'salario'].includes(r.catId)) continue;
       const c = getCat(r.catId);
       if (!c || !tipoCombina(c, valor)) continue;
       const subOk = r.subId && (c.subs || []).some(x => x.id === r.subId) ? r.subId : '';
@@ -608,7 +624,8 @@
 
   const ehCartao = contaId => getConta(contaId)?.tipo === 'cartao';
   const ehMov = tx => getCat(tx.catId)?.tipo === 'mov';
-  const RE_FATURA = /FATURA|OUROCARD|CARTAO DE CREDITO|PAGAMENTO (DE )?CARTAO/;
+  // Pagamento da fatura: inclui os cartões do Itaú, que no extrato aparecem só pelo nome ("ITAU BLACK 3110-3698")
+  const RE_FATURA = /FATURA|OUROCARD|CARTAO DE CREDITO|PAGAMENTO (DE )?CARTAO|ITAU BLACK|ITAUCARD|ITAU UNICLASS|ITAU PERSONNALITE/;
   /** Pagamento da fatura do cartão saindo da conta: não é gasto novo, mas é dinheiro que saiu do banco. */
   const ehPagamentoFatura = tx =>
     tx.valor < 0 && ehMov(tx) && !ehCartao(tx.contaId) && (tx.ehFatura || RE_FATURA.test(norm(tx.desc)));
@@ -633,12 +650,14 @@
       const cartao = ehCartao(tx.contaId);
 
       if (!cartao) {
-        if (mov && !ehPagamentoFatura(tx)) {
+        if (tx.estornoDe) {
+          r.saiu -= tx.valor;
+        } else if (mov && !ehPagamentoFatura(tx)) {
           r.movLiq += tx.valor;
         } else if (tx.valor > 0) {
           r.entrou += tx.valor;
           // Rendimento automático diário (centavos) não é "uma entrada" para quem lê o painel.
-          if (tx.catId === 'rendimentos' && /RENDIMENTO/.test(norm(tx.desc))) r.rendimentos += tx.valor;
+          if (tx.catId === 'rendimentos' && /RENDIMENTO|REND PAGO/.test(norm(tx.desc))) r.rendimentos += tx.valor;
           else r.qtdEntrou++;
         } else {
           r.saiu -= tx.valor;
@@ -760,33 +779,76 @@
 
   const RE_TRANSF = /PIX|TED|DOC|TEV|TRANSF|FATURA|PAGAMENTO|RESGATE|APLIC/;
   const RE_ESTORNO = /ESTORN|DEVOLU|DEVOLVID|\bDEV PIX\b|REEMBOLS|CANCELAMENTO|CHARGEBACK|REJEITAD|NAO EFETUAD/;
-  const PALAVRAS_ESTORNO = new Set('ESTORNO ESTORNADO DEVOLUCAO DEVOLVIDO DEVOLVIDA REEMBOLSO CANCELAMENTO CHARGEBACK REJEITADO NAO EFETUADO ERRO ENVIO'.split(' '));
+  const PALAVRAS_ESTORNO = new Set(('ESTORNO ESTORNADO DEVOLUCAO DEVOLVIDO DEVOLVIDA REEMBOLSO CANCELAMENTO CHARGEBACK ' +
+    'REJEITADO NAO EFETUADO ERRO ENVIO DEV PELO PELA VIA NUPAY ENVIADA RECEBIDA RECEBIDO').split(' '));
+  const nomeDoLancamento = tx => {
+    const d = semBancoDestino(tx.descHash || tx.desc);
+    const parte = d.includes(' · ') ? d.split(' · ')[0] : d;
+    return new Set(BolsoIA.tokens(parte).filter(w => !PALAVRAS_ESTORNO.has(w)));
+  };
 
   /**
-   * Liga cada estorno à compra que ele desfaz: mesmo valor, mesma conta, antes do estorno e
-   * (a) com alguma palavra do nome em comum, até 60 dias antes; ou (b) sem nome, até 3 dias antes
+   * Desfaz o abatimento automático de um estorno quando ela mudou a categoria do estorno ou excluiu
+   * um dos dois lançamentos (senão a compra ficaria abatida para sempre). Devolve os alterados.
+   */
+  function desfazerEstornosSoltos() {
+    const mudados = [];
+    const porId = new Map(state.lancamentos.map(tx => [tx.id, tx]));
+    for (const e of state.lancamentos) {
+      if (!e.estornoDe) continue;
+      const alvo = porId.get(e.estornoDe);
+      const mudouCategoria = e.catOrigem === 'usuario' && e.catId !== 'transf';
+      if (alvo && !mudouCategoria) continue;
+      if (alvo) {
+        alvo.abatido = round2(Math.max(0, (Number(alvo.abatido) || 0) - (Number(e.usadoAbate) || 0)));
+        delete alvo.estornoPor;
+        mudados.push(alvo);
+      }
+      e.usadoAbate = 0;
+      delete e.estornoDe;
+      mudados.push(e);
+    }
+    for (const g of state.lancamentos) {
+      if (!g.estornoPor) continue;
+      const e = porId.get(g.estornoPor);
+      if (e && e.estornoDe === g.id) continue;
+      g.abatido = 0;
+      delete g.estornoPor;
+      mudados.push(g);
+    }
+    return mudados;
+  }
+
+  /**
+   * Liga cada estorno à compra que ele desfaz (nunca a uma aplicação ou transferência): mesmo valor, mesma
+   * conta, antes do estorno e (a) com alguma palavra do nome em comum, até 60 dias antes; ou (b) quando um
+   * dos dois não tem nome, até 3 dias antes
    * ("Pix não efetuado" logo depois do Pix). Fica a mais perto na data. Só valor inteiro: estorno
-   * parcial fica para ela abater à mão. Nunca mexe no que ela classificou. Devolve os alterados.
+   * parcial fica para ela abater à mão. Não mexe em estorno que ela classificou (a compra pode ter sido
+   * classificada por ela: só ganha o abatimento). Devolve os alterados.
    */
   function estornosAbatidos() {
     const mudados = [];
     const dia = tx => Date.parse(`${tx.data}T12:00:00Z`) / 86400000;
-    const nome = tx => new Set(BolsoIA.tokens(tx.desc).filter(w => !PALAVRAS_ESTORNO.has(w)));
+    const nome = nomeDoLancamento;
     const estornos = state.lancamentos.filter(e => e.valor > 0 && e.catOrigem !== 'usuario' && !(e.usadoAbate > 0)
       && RE_ESTORNO.test(norm(e.desc)));
     for (const e of estornos.sort((a, b) => a.data.localeCompare(b.data))) {
       const nomeE = nome(e);
       const alvo = state.lancamentos
         .filter(g => g.valor < 0 && g.contaId === e.contaId && Math.abs(g.valor + e.valor) <= 0.01
-          && !(g.abatido > 0) && dia(g) <= dia(e))
+          && !(g.abatido > 0) && !ehMov(g) && dia(g) <= dia(e))
         .filter(g => {
           const dias = dia(e) - dia(g);
-          const comum = [...nome(g)].some(w => nomeE.has(w));
-          return comum ? dias <= 60 : dias <= 3;
+          const nomeG = nome(g);
+          if ([...nomeG].some(w => nomeE.has(w))) return dias <= 60;
+          // sem nome em comum: só se um dos dois não tiver nome ("Pix não efetuado"), e logo depois
+          return (!nomeE.size || !nomeG.size) && dias <= 3;
         })
         .sort((a, b) => dia(b) - dia(a))[0];
       if (!alvo) continue;
       alvo.abatido = round2(Math.abs(alvo.valor));
+      alvo.estornoPor = e.id;
       Object.assign(e, { usadoAbate: round2(e.valor), estornoDe: alvo.id, catId: 'transf', subId: '', catOrigem: 'auto' });
       mudados.push(alvo, e);
     }
@@ -812,13 +874,16 @@
 
     // 0. Estorno, devolução ou Pix rejeitado abate a compra de mesmo valor na mesma conta (como o "Abater"
     //    feito à mão): a compra que voltou não conta como gasto, nem o dinheiro de volta como entrada.
+    for (const tx of desfazerEstornosSoltos()) mudados.add(tx);
     for (const tx of estornosAbatidos()) mudados.add(tx);
 
     // 1. Saída numa conta com entrada de mesmo valor em outra. Só vale para Pix/TED sem categoria de loja
     //    (aplicação, quadra, mercado... já classificados por regra ficam de fora) e, quando os dois lados
     //    trazem nome, com um nome em comum ("Antonio Roberto Nunes Silva" no Nubank e "PIX TRANSF Antonio"
     //    no Itaú). Nos extratos do Antônio, só pelo valor e pela data, 13 de 31 pares eram de outras pessoas.
-    const livreTransf = tx => livre(tx) && !(tx.catOrigem === 'regra' && tx.catId && tx.catId !== 'pix');
+    const livreTransf = tx => livre(tx) && !tx.estornoDe && !tx.estornoPor && !(tx.usadoAbate > 0)
+      && !(tx.catOrigem === 'regra' && tx.catId && tx.catId !== 'pix'
+        && !(tx.catId === 'transf' && /\b(PIX|TED|DOC|TEV|TRANSF)/.test(norm(tx.desc)) && !/APLIC|RESGATE|FATURA/.test(norm(tx.desc))));
     const nomes = tx => {
       // "NOME · tipo" (Nubank limpo, BB) ou "Transferência enviada pelo Pix - NOME" (Nubank original)
       const d = semBancoDestino(tx.descHash || tx.desc);
@@ -848,7 +913,7 @@
     for (const cc of state.contas.filter(c => c.tipo === 'cartao')) {
       const porMes = new Map();
       for (const tx of state.lancamentos) {
-        if (tx.contaId !== cc.id || tx.valor >= 0 || ehMov(tx)) continue;
+        if (tx.contaId !== cc.id || !((tx.valor < 0 && !ehMov(tx)) || tx.estornoDe)) continue;
         const ym = tx.data.slice(0, 7);
         porMes.set(ym, round2((porMes.get(ym) || 0) - tx.valor));
       }
@@ -1095,7 +1160,7 @@
    * Sem faturas importadas por arquivo (nome com o vencimento), usa o ciclo pelo dia de fechamento.
    */
   function faturaDoCartao(c, ym) {
-    const doCartao = state.lancamentos.filter(tx => tx.contaId === c.id && !ehMov(tx));
+    const doCartao = state.lancamentos.filter(tx => tx.contaId === c.id && (!ehMov(tx) || tx.estornoDe));
     const total = lista => round2(lista.reduce((acc, tx) => acc - tx.valor, 0));
     const nomeMes = v => labelMes(v.slice(0, 7)).split(' ')[0].toLowerCase();
     const vencs = [...new Set(doCartao.map(tx => tx.fatura).filter(Boolean))].filter(v => v <= fimDoMes(addMes(ym, 1))).sort();
@@ -1245,7 +1310,9 @@
     const fim = fimDoMes(ym);
     const diaHoje = diaDe(hoje);
     const diasRest = diaDe(fim) - diaHoje;
-    const conta = tx => ids.has(tx.contaId) && !ehMov(tx) && tx.catId !== 'rendimentos';
+    // Sem cartão importado, o pagamento da fatura é só mais uma saída da conta (e costuma ser a maior do mês)
+    const semCartao = !state.contas.some(c => c.tipo === 'cartao');
+    const conta = tx => ids.has(tx.contaId) && tx.catId !== 'rendimentos' && (!ehMov(tx) || (semCartao && ehPagamentoFatura(tx)));
     const hist = [1, 2, 3].map(i => addMes(ym, -i))
       .filter(m => state.lancamentos.some(tx => ids.has(tx.contaId) && tx.data.startsWith(m)));
     if (!hist.length) return null;
@@ -1278,7 +1345,7 @@
         const dia = Math.round(mediana(meses.flatMap(m => g.get(m).map(tx => diaDe(tx.data)))));
         if (dia < diaHoje - 5) continue; // passou bem do dia de sempre: este mês talvez não venha
         const ultimo = g.get(meses[0])[0];
-        fixas.push({ chave: k, desc: ultimo.desc, catId: ultimo.catId, valor: round2(valor - jaNoMes), dia: Math.max(dia, diaHoje) });
+        fixas.push({ chave: k, desc: ultimo.desc, catId: ultimo.catId, valor: round2(valor - jaNoMes), dia: Math.min(Math.max(dia, diaHoje), diaDe(fim)) });
       }
     }
     const ocultas = new Set(state.fixasOcultas || []);
@@ -1297,10 +1364,11 @@
     // Gastos se repetem bem (com os dados da Ana, erro médio de 10% no que ainda ia sair); entradas que
     // não são fixas variam demais (renda de autônoma), então ficam fora do número e viram uma faixa.
     const cenarios = hist.map(m => {
-      const l = state.lancamentos.filter(tx => conta(tx) && tx.data.startsWith(m) && diaDe(tx.data) > diaHoje && !fixasChaves.has(chave(tx)));
+      const corte = diaDe(fimDoMes(m)) - diasRest;
+      const l = state.lancamentos.filter(tx => conta(tx) && tx.data.startsWith(m) && diaDe(tx.data) > corte && !fixasChaves.has(chave(tx)));
       return {
         ent: round2(l.filter(tx => tx.valor > 0).reduce((a, tx) => a + tx.valor, 0)),
-        sai: round2(-l.filter(tx => tx.valor < 0).reduce((a, tx) => a + tx.valor, 0))
+        sai: round2(l.filter(tx => tx.valor < 0).reduce((a, tx) => a + valorLiquidoGasto(tx), 0))
       };
     });
     const diaADia = round2(mediana(cenarios.map(c => c.sai)));
@@ -1325,6 +1393,8 @@
       if (s < menor.valor) menor = { valor: round2(s), data: `${ym}-${String(d).padStart(2, '0')}` };
     }
     return {
+      // último dia com extrato nas contas: se ficou para trás, a previsão conta como futuro o que já passou
+      ultimoExtrato: state.lancamentos.filter(tx => ids.has(tx.contaId) && tx.data <= hoje).reduce((m, tx) => (tx.data > m ? tx.data : m), ''),
       fim, saldoHoje, previsto, comEntradas, entra, sai, fatura, diaADia, diasRest, meses: hist.length,
       desde: diaHoje + 1, fixas: contam, ocultas: fixas.filter(f => ocultas.has(f.chave)), faturas, menor
     };
@@ -1351,12 +1421,15 @@
     const ents = [p.comEntradas.min - p.previsto, p.comEntradas.max - p.previsto].map(v => round2(v));
     const entrou = ents[1] > 0
       ? `<p class="pv-faixa">Nos últimos meses, do dia ${String(p.desde).padStart(2, '0')} ao fim do mês entraram ${ents[1] - ents[0] < 1 ? moed(ents[1]) : `de ${moed(ents[0])} a ${moed(ents[1])}`}.</p>` : '';
+    const velho = p.ultimoExtrato && (Date.parse(hojeStr()) - Date.parse(p.ultimoExtrato)) / 864e5 > 3
+      ? `<p class="pv-faixa">Último extrato importado: ${dataBR(p.ultimoExtrato)}. Importe o mais recente para a previsão valer.</p>` : '';
     const aviso = p.previsto >= 0 && p.menor.valor < 0
       ? `<p class="pv-aviso">Atenção: antes disso, por volta de ${dataBR(p.menor.data)}, pode ficar negativo.</p>` : '';
     el.innerHTML = `
       <div class="cd-top"><span class="cd-lb">Até ${dataBR(p.fim)} ainda deve sair</span><span class="cd-lb">como nos meses anteriores</span></div>
       <p class="pv-big num">${moed(aindaSai)}</p>
       <p class="pv-conta">${conta}</p>
+      ${velho}
       ${aviso}
       ${entrou}
       <details class="pv-det">
@@ -1871,10 +1944,15 @@
    * A conta que já tem boa parte destes lançamentos (mesmo dia e valor): um CSV do mesmo período de uma
    * conta já importada por PDF ou OFX cai na conta certa em vez de criar outra (e duplicar tudo).
    */
-  function contaComMesmosLancamentos(pares, aceita = () => true) {
+  function contaComMesmosLancamentos(pares, aceita = () => true, comSinal = false) {
+    // Primeiro com o sinal: um Pix entre as próprias contas aparece nas duas com o mesmo valor e sinais
+    // trocados (o CSV do Nubank PJ caía na conta do Itaú). Sem sinal só como segunda tentativa, para
+    // fatura em CSV com as compras positivas.
+    if (!comSinal) return contaComMesmosLancamentos(pares, aceita, true) || contaComMesmosLancamentos(pares, aceita, 'abs');
+    const cent = v => Math.round((comSinal === 'abs' ? Math.abs(v) : v) * 100);
     const chaves = new Set();
     for (const { data, valor } of pares) {
-      if (data && Number.isFinite(valor)) chaves.add(`${data}|${Math.round(Math.abs(valor) * 100)}`);
+      if (data && Number.isFinite(valor)) chaves.add(`${data}|${cent(valor)}`);
     }
     if (chaves.size < 3) return null;
     let melhor = null;
@@ -1882,7 +1960,7 @@
     for (const c of state.contas) {
       if (!aceita(c)) continue;
       const daConta = new Set(state.lancamentos.filter(tx => tx.contaId === c.id)
-        .map(tx => `${tx.data}|${Math.round(Math.abs(tx.valor) * 100)}`));
+        .map(tx => `${tx.data}|${cent(tx.valor)}`));
       let n = 0;
       for (const k of chaves) if (daConta.has(k)) n++;
       if (n > max) { max = n; melhor = c; }
@@ -2045,7 +2123,7 @@
       || contaComMesmosLancamentos(lido.itens || [], c => {
         const { banco, numero } = bancoENumero(c);
         return tipoBate(c) && !(banco && numero);
-      });
+      }, true);
     if (!conta) {
       conta = {
         id: uid('ct'),
@@ -2099,6 +2177,15 @@
     // muda de um formato para o outro e a data pode mudar uns dias (Pix no sábado, lançado na segunda).
     // O mesmo valor até 4 dias antes ou depois é o mesmo lançamento; vale o dia mais perto e, no empate, o mesmo nome.
     const deOutroFormato = new Map();
+    // Período que cada outro formato já cobre nesta conta: só procura o "mesmo lançamento" se a data do novo
+    // estiver dentro dele (um Pix de mesmo valor no fim do mês anterior, de outro arquivo, não é repetido).
+    const faixa = {};
+    for (const tx of state.lancamentos) {
+      if (tx.contaId !== conta.id || !(tx.fitid || tx.hashImport) || fonteDe(tx) === fonte) continue;
+      const f = faixa[fonteDe(tx)] || (faixa[fonteDe(tx)] = { ini: tx.data, fim: tx.data });
+      if (tx.data < f.ini) f.ini = tx.data;
+      if (tx.data > f.fim) f.fim = tx.data;
+    }
     for (const tx of state.lancamentos) {
       if (tx.contaId !== conta.id || !(tx.fitid || tx.hashImport) || fonteDe(tx) === fonte) continue;
       const k = Math.round(tx.valor * 100);
@@ -2116,7 +2203,8 @@
       let nota = Infinity;
       lista.forEach((tx, i) => {
         const d = dias(tx.data, it.data);
-        if (d > 4) return;
+        const f = faixa[fonteDe(tx)];
+        if (d > 4 || !f || it.data < f.ini || it.data > f.fim) return;
         const n = d + (mesmoNome(tx.desc, it.desc) ? 0 : 2.5);
         if (n < nota) { nota = n; melhor = i; }
       });
@@ -2535,7 +2623,7 @@
     if (!norm(texto)) return [];
     const sinal = tx ? Math.sign(tx.valor) : -1;
     return state.lancamentos.filter(x => x !== tx && x.catOrigem !== 'usuario' &&
-      Math.sign(x.valor) === sinal && casaRegra(textoBusca(x.desc), texto, false, true));
+      Math.sign(x.valor) === sinal && casaRegra(textoBusca(x.desc), texto, false, true, x.descHash || x.desc));
   }
 
   /** Cria (ou troca) a regra e aplica a todos os lançamentos parecidos que ela não classificou à mão. */
@@ -2576,6 +2664,8 @@
         const ct = getConta(tx.contaId);
         state.lancamentos = state.lancamentos.filter(x => x.id !== tx.id);
         await dbDelLanc(tx.id);
+        const soltos = desfazerEstornosSoltos();
+        if (soltos.length) await dbPutLanc(soltos);
         if (ct && recalcularSaldoInicialPorExtrato(ct)) {
           await kvSet('contas', state.contas);
         }
@@ -2740,6 +2830,8 @@
 
         const aplicados = $('#dlRegraBox').hidden ? 0
           : await criarRegraEAplicar($('#dlRegraTxt').value, catId, subId, tx);
+        const soltos = desfazerEstornosSoltos();
+        if (soltos.length) await dbPutLanc(soltos);
 
         treinarIA();
         toast(aplicados ? `Salvo · e mais ${aplicados} ${aplicados === 1 ? 'lançamento parecido' : 'lançamentos parecidos'}`
@@ -3306,7 +3398,7 @@
       await kvSet('regras', state.regras);
       // Vale também para o que já está no app (menos o que ela classificou à mão).
       const lista = state.lancamentos.filter(x => x.catOrigem !== 'usuario' && tipoCombina(cat, x.valor) &&
-        casaRegra(textoBusca(x.desc), texto, false, true));
+        casaRegra(textoBusca(x.desc), texto, false, true, x.descHash || x.desc));
       for (const x of lista) Object.assign(x, { catId, subId, catOrigem: 'regra' });
       await dbPutLanc(lista);
       treinarIA();

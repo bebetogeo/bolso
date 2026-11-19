@@ -111,6 +111,13 @@
     const s = String(desc || '').replace(/\s+/g, ' ').trim();
     const partes = s.split(' - ').map(p => p.trim());
     if (partes.length < 2 || !/^(Transfer|Pagamento|Compra|Pix|Resgate|Aplica|Dep[oó]sito|Estorno|Reembolso|Saque|Recarga|D[eé]bito|Cr[eé]dito)/i.test(partes[0])) return s;
+    // "Estorno - Compra no débito via NuPay - Zé Delivery": limpa a compra que veio de volta e marca o estorno
+    // ("Zé Delivery · Estorno - Compra no débito via NuPay"); funciona também com Pix (CPF e banco no fim).
+    if (/^Estorno$/i.test(partes[0]) && partes.length >= 3 && /^(Compra|Transfer|Pagamento|Pix)/i.test(partes[1])) {
+      const dentro = limparNubank(partes.slice(1).join(' - '));
+      const i = dentro.indexOf(' · ');
+      return i > 0 ? `${dentro.slice(0, i)} · Estorno - ${dentro.slice(i + 3)}` : `Estorno - ${dentro}`;
+    }
     const nome = partes[1];
     if (!nome || /^[\d•.\/-]+$/.test(nome)) return partes[0];
     return `${nome} · ${partes[0]}`;

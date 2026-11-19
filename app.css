@@ -1682,3 +1682,20 @@ body.privado .spark .pt-v { filter: blur(4px); }
 .orc-hoje2 small { font-size: 0.65rem; color: var(--mut); margin-top: 1px; }
 .orc-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .orc-pills:empty { display: none; }
+
+/* Previsão do saldo no fim do mês */
+.pv-big { font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; margin: 2px 0 0; }
+.pv-big.neg { color: var(--neg); }
+.pv-aviso { margin: 2px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--neg); }
+.pv-det { margin-top: 4px; }
+.pv-det summary { cursor: pointer; font-size: 0.82rem; color: var(--mut); padding: 4px 0; }
+.pv-l { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--lin); font-size: 0.9rem; }
+.pv-l > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.pv-l small { display: block; font-size: 0.72rem; color: var(--mut); }
+.pv-v { flex-shrink: 0; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+.pv-x { font-size: 0.8rem; padding: 2px 4px; }
+.pv-oc { margin-top: 6px; }
+.pv-faixa { margin: 0; font-size: 0.85rem; color: var(--mut); }
+.pv-faixa b { color: var(--fg); font-weight: 600; }
+.pv-conta { margin: 2px 0 0; font-size: 0.9rem; }
+.pv-conta b { font-weight: 700; }

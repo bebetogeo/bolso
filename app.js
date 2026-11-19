@@ -1,52 +1,75 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.4.0';
+  const VERSAO = '2.5.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
   // Regras embutidas. O texto casa no começo de uma palavra ("UBER" pega "DL*UBERRIDES");
   // com "=" no fim, só a palavra inteira ("MERCADO=" não pega "MERCADOPAGO").
   // As mais longas são testadas primeiro, então "MERCADO LIVRE" ganha de "MERCADO".
+  // Não há lista pública de lojas brasileiras por categoria (as que existem são de códigos MCC, em inglês,
+  // que não vêm no extrato): esta é nossa, conferida com extratos reais para não pegar categoria errada.
+  // Palavras curtas e comuns em nomes de pessoas (DAS, DIA, EXTRA, MAX...) ficam de fora de propósito.
   const REGRAS_POR_CAT = {
-    'transporte:app': 'UBER|99APP|99 POP|99 RIDE|99 TAXI|CABIFY',
-    'transporte:combustivel': 'IPIRANGA|SHELL|POSTO=|AUTO POSTO|PETROBRAS|COMBUST',
-    'transporte:pedagio': 'SEM PARAR|VELOE|CONECTCAR|ESTACIONAMENTO|ESTAPAR|PEDAGIO',
-    'transporte:manutencao': 'OFICINA|BORRACHARIA|AUTO PECAS|LAVA JATO',
-    'alimentacao:delivery': 'IFOOD|IFD=|RAPPI|ZE DELIVERY|AIQFOME|UBER EATS',
-    'alimentacao:mercado': 'SUPERMERC|HIPERMERC|MERCADO=|MERCEARIA|MERCADINHO|SACOLAO|HORTIFRUTI|ATACADAO|ASSAI|CARREFOUR|PAO DE ACUCAR|VERDEMAR|SUPER NOSSO|EPA=|MART MINAS|ACOUGUE|GRANEL|PANIFICADORA',
-    'alimentacao:restaurante': 'PADARIA|RESTAURANTE|LANCHONETE|LANCHES|SORVETERIA|MARMITARIA|CAFE=|CAFETERIA|BAR=|BOTECO|CHOPP|PIZZARIA|HAMBURG|BURGER|MCDONALD|OUTBACK|SUBWAY|BISCOITO DE QUEIJO',
-    'saude:farmacia': 'DROGASIL|DROGA RAIA|RAIA|DROGARIA|FARMACIA|DROGARIAS PACHECO|ARAUJO LOJA|PAGUE MENOS|PANVEL',
-    'saude:plano': 'UNIMED|OMINT|AMIL=|HAPVIDA|SULAMERICA SAUDE|BRADESCO SAUDE|LABORATORIO|HERMES PARDINI|CLINICA|ODONTO|HOSPITAL',
-    'saude:academia': 'SMART FIT|SMARTFIT|ACADEMIA|GYMPASS|WELLHUB|TOTALPASS|PILATES',
-    'assinaturas:streaming': 'NETFLIX|SPOTIFY|AMAZON PRIME|AMAZONPRIME|HBOMAX|HELPHBOMAX|DISNEY|GLOBOPLAY|YOUTUBE|DEEZER|PARAMOUNT',
-    'assinaturas:software': 'APPLE COM|GOOGLE=|ICLOUD|MICROSOFT|CHATGPT|OPENAI|CANVA',
-    'moradia:energia': 'CEMIG|ENEL=|CPFL|LIGHT=|ENERGISA|EQUATORIAL|NEOENERGIA|COELBA|COPEL|CELESC',
-    'moradia:agua': 'COPASA|SABESP|SANEPAR|CEDAE|EMBASA|GASMIG|COMGAS|ULTRAGAZ|LIQUIGAS',
-    'moradia:internet': 'VIVO=|CLARO=|TIM=|OI MOVEL|NET SERVICOS',
-    'moradia:aluguel': 'CONDOMINIO|ALUGUEL|IMOBILIARIA|QUINTOANDAR',
-    'compras:online': 'MERCADO LIVRE|MERCADOLIVRE|AMAZON COM|AMAZON MARKETPLACE|SHOPEE|SHPP|SHEIN|ALIEXPRESS|MAGALU|AMERICANAS',
-    'compras:vestuario': 'RENNER|RIACHUELO|C A MODAS|CEA=|ZARA=|HERING|CENTAURO|NETSHOES',
-    'compras:casa': 'LEROY|TOK STOK|CASAS BAHIA|FAST SHOP|KABUM',
-    'lazer:passeios': 'CINEMA|CINEMARK|INGRESSO|SYMPLA|EVENTIM|TEATRO|MUSEU',
-    'lazer:viagens': 'BOOKING|AIRBNB|HOTEL|POUSADA|DECOLAR|LATAM|GOL LINHAS|AZUL LINHAS',
-    'educacao': 'ESCOLA|COLEGIO|EDUCACAO|FACULDADE|UNIVERSIDADE|CURSO|UDEMY|ALURA|DUOLINGO|LIVRARIA|PAPELARIA',
-    'pets': 'PET SHOP|PETSHOP|PETZ|COBASI|PETLOVE|VETERIN|AGROPET',
-    'tarifas': 'TARIFA|ANUIDADE|IOF=|JUROS=|MULTA=|IPTU|IPVA|DARF|DETRAN|LICENCIAMENTO|CARTORIO',
-    'cuidados': 'SALAO|CABELEIR|BARBEARIA|MANICURE|ESMALTERIA|ESTETICA|DEPILACAO|BOTICARIO|NATURA=|SEPHORA',
-    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO|OPERACOES B3|COFRINHOS',
-    'rendimentos': 'RENDIMENTO|JUROS SOBRE CAPITAL|DIVIDENDO|ESTORNO|DEVOLUCAO PIX|PIX ENVIO DEVOLVIDO|PIX REJEITADO|CASHBACK',
-    'salario': 'SALARIO|PRO LABORE|PROVENTOS|FOLHA DE PAGAMENTO'
+    // "-": intermediários de pagamento; o nome não diz o que foi comprado, então o vocabulário não chuta.
+    '-': 'MERCADO PAGO|MERCADOPAGO|PIX MARKETPLACE|PAGSEGURO|PAG SEGURO|PICPAY|STONE PAGAMENTOS|CIELO=|GETNET|SUMUP|INFINITEPAY|VINDI=|ASAAS',
+    'transporte:app': 'UBER|99APP|99 POP|99POP|99 RIDE|99 TAXI|99TAXI|99 APP|CABIFY|INDRIVE|TAXI=|TAXIS=',
+    'transporte:combustivel': 'IPIRANGA|SHELL|POSTO=|POSTOS=|AUTO POSTO|AUTOPOSTO|PETROBRAS|COMBUST|RAIZEN|ALE COMBUSTIVEIS|ABASTEC|GNV=',
+    'transporte:pedagio': 'SEM PARAR|SEMPARAR|VELOE|CONECTCAR|MOVE MAIS|TAGGY|ESTACIONAMENTO|ESTACIONAM|ESTAPAR|PARKING|ROTATIVO|ZUL DIGITAL|INDIGO ESTAC|MULTIPARK|PEDAGIO|ARTERIS|ECOVIAS|AUTOBAN|NOVADUTRA',
+    'transporte:manutencao': 'OFICINA|BORRACHARIA|AUTO PECAS|AUTOPECAS|LAVA JATO|LAVAJATO|LAVA RAPIDO|PNEUS=|PNEU=|MECANICA|AUTO CENTER|AUTOCENTER|FUNILARIA|SEGURO AUTO|PORTO SEGURO AUTO|YOUSE',
+    'transporte': 'BILHETE UNICO|SPTRANS|BHBUS|OTIMO=|CPTM|METRO SP|METROSP|METRO RIO|METRORIO|SUPERVIA|RIOCARD|JAE=|TOP TRANSPORTE|TRANSFACIL|CBTU|ONIBUS|RECARGA TRANSPORTE|LOCALIZA|MOVIDA|UNIDAS|RENT A CAR',
+    'alimentacao:delivery': 'IFOOD|IFD=|RAPPI|ZE DELIVERY|AIQFOME|UBER EATS|JAMES DELIVERY|DELIVERY MUCH|ANOTA AI|ANOTAAI|DELIVERY',
+    'alimentacao:mercado': 'SUPERMERC|HIPERMERC|MERCADO=|MERCEARIA|MERCADINHO|MINIMERC|MINI MERC|SACOLAO|HORTIFRUTI|HORTI FRUTI|QUITANDA|VAREJAO|FEIRA=|FEIRAS=|ATACADAO|ATACADIS|ATACAREJO|ASSAI|CARREFOUR|PAO DE ACUCAR|MAKRO|SAMS CLUB|BIG BOMPRECO|BOMPRECO|ZONA SUL|PREZUNIC|SONDA=|ST MARCHE|ZAFFARI|ANGELONI|GIASSI|CONDOR=|BISTEK|COMPER=|SAVEGNAGO|NAGUMO|ROLDAO|TENDA ATACADO|FORT ATACAD|GBARBOSA|DAVO=|VERDEMAR|SUPER NOSSO|EPA=|MART MINAS|BAHAMAS|VILLEFORT|BH SUPER|DAKI=|OXXO|AMPM|CONVENIENCIA|DMA DISTRIBUIDORA|CARNE=|CARNES=|ACOUGUE|CASA DE CARNE|FRIGORIF|PEIXARIA|LATICINIO|GRANEL|EMPORIO|PANIFICADORA',
+    'alimentacao:restaurante': 'PADARIA|RESTAUR|LANCHONETE|LANCHES|SORVETERIA|SORVETES|GELATO|ACAI=|ACAITERIA|MARMITARIA|MARMITEX|CAFE=|CAFES=|CAFETERIA|STARBUCKS|BAR=|BARES=|BOTECO|BOTEQUIM|CHOPP|CHOPERIA|CERVEJARIA|PUB=|PIZZA=|PIZZAS=|PIZZARIA|DOMINOS|HAMBURG|BURGER|BURGUER|MCDONALD|BOBS=|HABIBS|GIRAFFAS|SPOLETO|CHINA IN BOX|KFC=|POPEYES|OUTBACK|SUBWAY|COCO BAMBU|MADERO|CHURRASC|ESPETINHO|ESPETO=|GRILL=|COMIDA=|EMPADA|PASTELARIA|PASTEL=|SALGADOS|ESFIHA|TAPIOCA|CREPERIA|SUSHI|TEMAKERIA|JAPONES|CANTINA|BISTRO|GASTRONOMIA|BUFFET|SELF SERVICE|DOCERIA|CONFEITARIA|BOMBONIERE|CACAU SHOW|KOPENHAGEN|CHIQUINHO|BACIO DI LATTE|BISCOITO DE QUEIJO',
+    'saude:farmacia': 'DROGASIL|DROGA RAIA|RAIA|DROGARIA|DROGA=|DROGAO|DROGAL=|FARMAC|ULTRAFARMA|DROGARIAS PACHECO|ARAUJO LOJA|DROGARIA ARAUJO|PAGUE MENOS|PANVEL|NISSEI|VENANCIO|MANIPULACAO',
+    'saude:plano': 'UNIMED|OMINT|AMIL=|HAPVIDA|NOTREDAME|NOTRE DAME|GNDI|PREVENT SENIOR|SULAMERICA SAUDE|BRADESCO SAUDE|PORTO SEGURO SAUDE|CASSI=|GEAP=|LABORATORIO|LABORAT|HERMES PARDINI|FLEURY|SABIN=|LAVOISIER|DELBONI|DIAGNOSTIC|CLINICA|POLICLINICA|CONSULTORIO|ODONTO|ORTODONT|DENTISTA|DENTAL=|HOSPITAL|PRONTO SOCORRO|MEDICO|MEDICA=|MEDICINA|FISIOTERAP|PSICOLOG|PSIQUIATR|NUTRICION|FONOAUDIOL|DOCTORALIA|VACINA',
+    'saude:academia': 'SMART FIT|SMARTFIT|BLUEFIT|SELFIT|BODYTECH|BIO RITMO|BIORITMO|ACADEMIA|GYMPASS|WELLHUB|TOTALPASS|PILATES|CROSSFIT|NATACAO|YOGA=|IOGA=',
+    'saude': 'OTICA|OTICAS',
+    'assinaturas:streaming': 'NETFLIX|SPOTIFY|AMAZON PRIME|AMAZONPRIME|PRIME VIDEO|HBOMAX|HBO MAX|HELPHBOMAX|DISNEY|GLOBOPLAY|YOUTUBE|DEEZER|PARAMOUNT|STAR PLUS|CRUNCHYROLL|APPLE TV|TELECINE|PREMIERE=|DAZN|MUBI=|AUDIBLE|KINDLE UNLIMITED|TIDAL=',
+    'assinaturas:software': 'APPLE COM|APPLE SERVICES|GOOGLE=|GOOGLE ONE|ICLOUD|MICROSOFT|CHATGPT|OPENAI|ANTHROPIC|CLAUDE AI|CANVA|ADOBE|DROPBOX|NOTION|ZOOM US|LINKEDIN|MCAFEE|NORTON',
+    'assinaturas': 'TINDER|BUMBLE|ASSINATURA',
+    'moradia:energia': 'CEMIG|ENEL=|CPFL|LIGHT=|LIGHT SESA|ENERGISA|EQUATORIAL|NEOENERGIA|COELBA|CELPE|COSERN|ELEKTRO|COPEL|CELESC|CEEE|EDP=|RGE=|AMAZONAS ENERGIA|ENERGIA ELETRICA',
+    'moradia:agua': 'COPASA|SABESP|SANEPAR|CEDAE|EMBASA|CAESB|CAGECE|COMPESA|CASAN=|CORSAN|SANEAGO|SAAE=|DMAE=|AGUAS DE|GASMIG|COMGAS|NATURGY|ULTRAGAZ|LIQUIGAS|SUPERGASBRAS|COPAGAZ|NACIONAL GAS|DEPOSITO DE GAS',
+    'moradia:internet': 'VIVO=|VIVO FIBRA|TELEFONICA|CLARO=|CLARO NET|TIM=|TIM S A|OI MOVEL|OI FIBRA|NET SERVICOS|ALGAR|SKY=|BRISANET|DESKTOP=|RECARGA CEL|RECARGA DE CELULAR',
+    'moradia:aluguel': 'CONDOMINIO|COND EDIF|COND RESID|ALUGUEL|IMOBILIARIA|IMOVEIS|QUINTOANDAR|QUINTO ANDAR|LOFT=',
+    'compras:online': 'MERCADO LIVRE|MERCADOLIVRE|AMAZON=|AMAZON COM|AMAZON MARKETPLACE|SHOPEE|SHPP|SHEIN|ALIEXPRESS|TEMU=|MAGALU|MAGAZINE LUIZA|MAGAZINELUIZA|AMERICANAS|SUBMARINO|SHOPTIME|ENJOEI|OLX=|ELO7|PAYPAL',
+    'compras:vestuario': 'RENNER|RIACHUELO|C A MODAS|CEA=|ZARA=|HERING|MARISA=|PERNAMBUCANAS|YOUCOM|TORRA=|LOJAS AVENIDA|CAEDU|AREZZO|SCHUTZ|CENTAURO|NETSHOES|DAFITI|DECATHLON|NIKE=|ADIDAS|HAVAIANAS|MALWEE|FARM RIO|ANIMALE|LUPO=|PUKET|TRACK FIELD|OLYMPIKUS|VIVARA|PANDORA|CALCADOS|SAPATARIA|BOUTIQUE|MODAS=|CONFECC',
+    'compras:casa': 'LEROY|TOK STOK|TOKSTOK|CASAS BAHIA|PONTO FRIO|PONTOFRIO|FAST SHOP|KABUM|MADEIRAMADEIRA|MOBLY|ETNA=|CAMICADO|TELHANORTE|HAVAN|DAISO|LE BISCUIT|IMAGINARIUM|CASA E VIDEO|ORTOBOM|COLCHOES|MATERIAL DE CONSTRUCAO|MAT CONSTR|MATERIAIS DE CONSTRUCAO|HOME CENTER|FERRAGENS|FERRAMENTAS|VIDRACARIA|TINTAS=|MARCENARIA|ARMARINHO|UTILIDADES|IPLACE',
+    'lazer:passeios': 'CINEMA|CINEMARK|KINOPLEX|CINEPOLIS|CINESYSTEM|UCI=|INGRESSO|TICKETMASTER|TICKET360|BILHETERIA|SYMPLA|EVENTIM|TEATRO|MUSEU|PARQUE DE DIVERSOES|ZOOLOGICO|AQUARIO|BOLICHE|KARAOKE|SOCIO TORCEDOR',
+    'lazer:viagens': 'BOOKING|AIRBNB|HOTEL|HOTEIS|HOSTEL|RESORT|POUSADA|DECOLAR|EXPEDIA|TRIVAGO|HURB=|CVC=|MAXMILHAS|123MILHAS|SMILES|LATAM|GOL LINHAS|VOEGOL|AZUL LINHAS|VOEAZUL|AEROPORTO|DUTY FREE|DUFRY|CLICKBUS|BUSER|RODOVIARIA|PASSAGEM|PASSAGENS',
+    'lazer': 'STEAM=|STEAMGAMES|PLAYSTATION|XBOX|NINTENDO|BETANO|BET365',
+    'educacao': 'ESCOLA|COLEGIO|EDUCAC|ENSINO|FACULDADE|UNIVERSIDADE|CURSO|MENSALIDADE ESCOLAR|MATRICULA|CRECHE|BERCARIO|IDIOMAS|KUMON|WIZARD|CCAA|FISK=|CULTURA INGLESA|OPEN ENGLISH|UDEMY|ALURA|COURSERA|HOTMART|DUOLINGO|ESTACIO|ANHANGUERA|UNOPAR|LIVRARIA|SARAIVA|ESTANTE VIRTUAL|PAPELARIA|KALUNGA',
+    'pets': 'PET SHOP|PETSHOP|PET=|PETS=|PETZ|COBASI|PETLOVE|PETLAND|VETERIN|CLINICA VET|AGROPET|RACAO|RACOES|BANHO E TOSA|DOGHERO',
+    'tarifas': 'TARIFA|TAR PACOTE|PACOTE DE SERVICOS|CESTA DE SERVICOS|ANUIDADE|IOF=|JUROS=|ENCARGOS|MORA=|MULTA=|IPTU|IPVA|DARF|GRU=|SEFAZ|PREFEITURA|RECEITA FEDERAL|SIMPLES NACIONAL|DETRAN|LICENCIAMENTO|CARTORIO|EMOLUMENTOS|CUSTAS',
+    'cuidados': 'SALAO|CABELEIR|BARBEARIA|BARBEIRO|MANICURE|ESMALTERIA|NAIL=|UNHAS|SOBRANCELHA|CILIOS|ESTETICA|DEPILACAO|ESPACO LASER|MASSAGEM|SPA=|BELEZA|COSMETIC|PERFUMARIA|BOTICARIO|EUDORA|NATURA=|AVON=|SEPHORA|QUEM DISSE BERENICE|TATUAGEM|TATTOO',
+    'outros': 'SAQUE|DOACAO|VAKINHA|DIZIMO|IGREJA',
+    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|PAGAMENTO RECEBIDO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO|OPERACOES B3|COFRINHO|CAIXINHA|POUPANCA|RDB=|CDB=|LCI=|LCA=|CORRETORA|XP INVESTIMENTOS|NU INVEST|BRASILPREV|PGBL|VGBL',
+    'rendimentos': 'RENDIMENTO|REND PAGO|JUROS SOBRE CAPITAL|DIVIDENDO|ESTORNO|DEVOLUCAO|DEVOLVIDO|PIX ENVIO DEVOLVIDO|PIX REJEITADO|CASHBACK|REEMBOLSO|RESTITUICAO|NOTA FISCAL PAULISTA',
+    'salario': 'SALARIO|PRO LABORE|PROVENTOS|FOLHA DE PAGAMENTO|REMUNERACAO|ORDENADO|ADIANTAMENTO SALARIAL|PLR=|APOSENTADORIA|BENEFICIO INSS'
   };
   const REGRAS_PADRAO = Object.entries(REGRAS_POR_CAT)
     .flatMap(([alvo, lista]) => lista.split('|').map(t => {
       const [catId, subId = ''] = alvo.split(':');
       const inteira = t.endsWith('=');
-      return { texto: inteira ? t.slice(0, -1) : t, inteira, catId, subId };
+      return { texto: inteira ? t.slice(0, -1) : t, inteira, catId: catId === '-' ? '' : catId, subId };
     }))
     .sort((a, b) => b.texto.length - a.texto.length);
   // Testada depois de todas as outras: Pix enviado para uma pessoa vai para "Pix e transferências".
-  const REGRAS_GENERICAS = [{ texto: 'PIX ENVIADO', inteira: false, catId: 'pix', subId: '', sinal: -1 }];
+  // Para empresa (consultório, condomínio, loja) não vale: fica para a sugestão ✦ ou para ela escolher.
+  const REGRAS_GENERICAS = ['PIX ENVIADO', 'PIX ENVIO', 'PIX TRANSF', 'TRANSFERENCIA ENVIADA PELO PIX', 'TRANSF PIX']
+    .map(texto => ({ texto, inteira: false, catId: 'pix', subId: '', sinal: -1, pessoa: true }));
+  const RE_EMPRESA = new RegExp(' (' + [
+    'LTDA', 'S A', 'SA', 'ME', 'EPP', 'EIRELI', 'CIA', 'COM', 'COM BR', 'COMERCIO', 'COMERCIAL', 'SERVICOS?',
+    'DISTRIBUI\\w*', 'AGENCIA', 'INSTITUICAO', 'INSTITUTO', 'ASSOCIACAO', 'CONDOMINIO', 'EMPREEND\\w*', 'INDUSTRIA',
+    'CONSULTORIO', 'CLINICA', 'LOJAS?', 'PAGAMENTOS', 'TECNOLOGIA', 'BANCO', 'COOPERAT\\w*', 'FUNDACAO', 'SOLUCOES',
+    'PARTICIPACOES', 'GRUPO', 'ATACADO', 'CENTRO', 'STUDIO', 'ESTUDIO', 'ACADEMIA', 'ESCOLA', 'COLEGIO', 'IGREJA',
+    'PREFEITURA', 'SEGUROS', 'ADMINISTRADORA', 'ENERGIA', 'SANEAMENTO', 'TELECOM\\w*', 'INTERNET', 'CONSTRU\\w*',
+    'IMOVEIS', 'EDITORA', 'FARMACIA', 'DROGARIA', 'RESTAURANTE', 'EDUCAC\\w*', 'SAUDE', 'DIGITAL', 'BRASIL',
+    'EMPRESA', 'INFORMATICA', 'TECIDOS', 'MATERIA\\w*', 'VEICULOS', 'CONTAB\\w*', 'ADVOCACIA', 'ADVOGADOS', 'ENGENHARIA',
+    'ARQUITETURA', 'TRANSPORTES?', 'TURISMO', 'EVENTOS', 'MODAS', 'CALCADOS', 'ALIMENTOS', 'BEBIDAS', 'PRODUTOS', 'ARTIGOS',
+    'PRESENTES', 'PAPELARIA', 'ESPORTES?', 'MARKETPLACE', 'PAGTO', 'NEGOCIOS', 'COSMETICOS'
+  ].join('|') + ') ');
 
   const CATS_PADRAO = [
     {
@@ -485,7 +508,8 @@
   }
 
   // Texto da descrição com espaços nas pontas, para casar regras no começo das palavras.
-  const textoBusca = desc => ` ${norm(desc).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  // "PostoBomBomLtda" → "Posto Bom Bom Ltda" (algumas maquininhas juntam as palavras).
+  const textoBusca = desc => ` ${norm(String(desc || '').replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2')).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
   function casaRegra(alvo, texto, inteira) {
     const t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
     return Boolean(t) && alvo.includes(` ${t}${inteira ? ' ' : ''}`);
@@ -494,16 +518,20 @@
   const tipoCombina = (cat, valor) => cat.tipo === 'mov' || (valor < 0 ? cat.tipo === 'gasto' : cat.tipo === 'receita');
 
   /** Regras dela, Pix para a própria titular e regras embutidas. Não chuta: devolve null se nada casar. */
-  function classificarPorRegra(desc, valor) {
+  function classificarPorRegra(desc, valor, comGenericas = true) {
     const alvo = textoBusca(desc);
     for (const r of state.regras) {
       const c = getCat(r.catId);
       if (c && r.texto && casaRegra(alvo, r.texto, false)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
     }
     if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
-    for (const r of [...REGRAS_PADRAO, ...REGRAS_GENERICAS]) {
+    // Para saber se quem recebe é empresa, sem o banco que o Nubank põe no fim ("... - NU PAGAMENTOS - IP").
+    const quem = textoBusca(BolsoPDF.limparNubank(desc));
+    for (const r of comGenericas ? [...REGRAS_PADRAO, ...REGRAS_GENERICAS] : REGRAS_PADRAO) {
       if (r.sinal && Math.sign(valor) !== r.sinal) continue;
+      if (r.pessoa && RE_EMPRESA.test(quem)) continue;
       if (!casaRegra(alvo, r.texto, r.inteira)) continue;
+      if (!r.catId) return null;
       const c = getCat(r.catId);
       if (!c || !tipoCombina(c, valor)) continue;
       const subOk = r.subId && (c.subs || []).some(x => x.id === r.subId) ? r.subId : '';
@@ -512,15 +540,19 @@
     return null;
   }
 
-  /** Sugestão para a triagem: a regra, se houver; senão o palpite do aprendizado (nunca gravado sozinho). */
+  /**
+   * Sugestão para a triagem: a regra, se houver; senão o palpite do aprendizado (nunca gravado sozinho).
+   * A regra genérica ("Pix enviado" → Pix e transferências) fica por último: se ela já mandou Pix para
+   * essa loja ou pessoa com outra categoria, o aprendizado sabe mais.
+   */
   function classificar(desc, valor, contaId = '') {
-    const porRegra = classificarPorRegra(desc, valor);
+    const porRegra = classificarPorRegra(desc, valor, false);
     if (porRegra) return porRegra;
     const p = BolsoIA.prever(state.ia, { desc, valor, cartao: ehCartao(contaId) }, key => {
       const c = getCat(key.split(':')[0]);
       return Boolean(c) && tipoCombina(c, valor);
     });
-    if (!p) return null;
+    if (!p) return classificarPorRegra(desc, valor);
     const [catId, subId = ''] = p.key.split(':');
     return { catId, subId, origem: 'ia' };
   }
@@ -855,6 +887,7 @@
     renderSaldoCard(meses);
     renderEntrouSaiu(res);
     renderContasStrip();
+    renderPrevisaoCard();
     renderRateioCard();
     renderFuturoCard(parcelasFuturasNoMes(state.mes));
     renderHistoricoCard(meses, cores);
@@ -1118,6 +1151,168 @@
       </ul>
     `;
   }
+
+  /* ---------- Previsão do saldo no fim do mês ---------- */
+  const diaDe = d => Number(d.slice(8, 10));
+  const mediana = arr => {
+    const a = [...arr].sort((x, y) => x - y);
+    const m = a.length >> 1;
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  };
+  const somaValores = lista => round2(lista.reduce((acc, tx) => acc + tx.valor, 0));
+
+  /**
+   * Quanto deve haver nas contas no fim do mês atual, se ele seguir como os anteriores:
+   *   saldo de hoje
+   * ± contas fixas que ainda não entraram ou saíram este mês (aluguel, escola, plano, salário fixo…)
+   * − a fatura do cartão que vence até o fim do mês e ainda não foi paga
+   * + o resto que costuma entrar e − o resto que costuma sair do dia seguinte até o fim do mês
+   *   (a mediana dos meses anteriores, nos mesmos dias do mês: pega o jeito do mês, como renda que
+   *   chega em vários Pix ou contas que se concentram no começo).
+   * Conta fixa = mesmo nome (2 primeiras palavras), no máximo 2 vezes por mês, em pelo menos 2 dos 3
+   * meses anteriores, com valor parecido (até 25% ou R$ 30 da mediana). Ela pode tirar uma da conta
+   * (fica em fixasOcultas).
+   */
+  function previsaoDoMes(hoje = hojeStr()) {
+    const ym = hoje.slice(0, 7);
+    const bancos = contasBanco();
+    if (state.exemplo || !bancos.length) return null;
+    const ids = new Set(bancos.map(c => c.id));
+    const fim = fimDoMes(ym);
+    const diaHoje = diaDe(hoje);
+    const diasRest = diaDe(fim) - diaHoje;
+    const conta = tx => ids.has(tx.contaId) && !ehMov(tx) && tx.catId !== 'rendimentos';
+    const hist = [1, 2, 3].map(i => addMes(ym, -i))
+      .filter(m => state.lancamentos.some(tx => ids.has(tx.contaId) && tx.data.startsWith(m)));
+    if (!hist.length) return null;
+
+    const chave = tx => `${tx.valor > 0 ? '+' : '-'}${BolsoIA.textoRegra(tx.desc, 2)}`;
+    const grupos = new Map();
+    for (const tx of state.lancamentos) {
+      const m = (tx.data || '').slice(0, 7);
+      if (!conta(tx) || tx.data > hoje || (m !== ym && !hist.includes(m))) continue;
+      const k = chave(tx);
+      if (!grupos.has(k)) grupos.set(k, new Map());
+      const g = grupos.get(k);
+      if (!g.has(m)) g.set(m, []);
+      g.get(m).push(tx);
+    }
+
+    const fixas = [];
+    const fixasChaves = new Set();
+    if (hist.length >= 2) {
+      for (const [k, g] of grupos) {
+        const meses = hist.filter(m => g.has(m));
+        if (meses.length < 2 || meses.some(m => g.get(m).length > 2)) continue;
+        const totais = meses.map(m => somaValores(g.get(m)));
+        const valor = round2(mediana(totais));
+        if (Math.abs(valor) < 5) continue;
+        if (totais.some(t => Math.abs(t - valor) > Math.max(30, Math.abs(valor) * 0.25))) continue;
+        fixasChaves.add(k);
+        const jaNoMes = somaValores(g.get(ym) || []);
+        if (Math.abs(jaNoMes) >= Math.abs(valor) * 0.5) continue;
+        const dia = Math.round(mediana(meses.flatMap(m => g.get(m).map(tx => diaDe(tx.data)))));
+        if (dia < diaHoje - 5) continue; // passou bem do dia de sempre: este mês talvez não venha
+        const ultimo = g.get(meses[0])[0];
+        fixas.push({ chave: k, desc: ultimo.desc, catId: ultimo.catId, valor: round2(valor - jaNoMes), dia: Math.max(dia, diaHoje) });
+      }
+    }
+    const ocultas = new Set(state.fixasOcultas || []);
+    const contam = fixas.filter(f => !ocultas.has(f.chave)).sort((a, b) => a.dia - b.dia);
+
+    // Fatura do cartão que vence até o fim do mês e ainda não foi paga (ou a parte já conhecida dela)
+    const faturas = [];
+    for (const c of state.contas.filter(x => x.tipo === 'cartao')) {
+      const { aberta } = faturaDoCartao(c, ym);
+      if (aberta.venc && aberta.venc <= fim && aberta.valor > 0) {
+        faturas.push({ desc: nomeCurto(c), valor: aberta.valor, dia: Math.max(diaDe(aberta.venc), diaHoje), parcial: !aberta.completa });
+      }
+    }
+
+    // O resto (fora contas fixas e fatura): quanto entrou e saiu depois deste dia em cada mês anterior.
+    // Gastos se repetem bem (com os dados da Ana, erro médio de 10% no que ainda ia sair); entradas que
+    // não são fixas variam demais (renda de autônoma), então ficam fora do número e viram uma faixa.
+    const cenarios = hist.map(m => {
+      const l = state.lancamentos.filter(tx => conta(tx) && tx.data.startsWith(m) && diaDe(tx.data) > diaHoje && !fixasChaves.has(chave(tx)));
+      return {
+        ent: round2(l.filter(tx => tx.valor > 0).reduce((a, tx) => a + tx.valor, 0)),
+        sai: round2(-l.filter(tx => tx.valor < 0).reduce((a, tx) => a + tx.valor, 0))
+      };
+    });
+    const diaADia = round2(mediana(cenarios.map(c => c.sai)));
+    const ents = cenarios.map(c => c.ent);
+
+    const saldoHoje = saldoTotalEm(hoje);
+    const entra = round2(contam.filter(f => f.valor > 0).reduce((a, f) => a + f.valor, 0));
+    const sai = round2(-contam.filter(f => f.valor < 0).reduce((a, f) => a + f.valor, 0));
+    const fatura = round2(faturas.reduce((a, f) => a + f.valor, 0));
+    const previsto = round2(saldoHoje + entra - sai - fatura - diaADia);
+    const comEntradas = { min: round2(previsto + Math.min(...ents)), max: round2(previsto + Math.max(...ents)) };
+
+    // Menor saldo até o fim do mês (ex.: o aluguel sai antes de o dinheiro entrar), com o resto
+    // espalhado igual pelos dias que faltam
+    let s = saldoHoje;
+    let menor = { valor: saldoHoje, data: hoje };
+    const porDia = diasRest > 0 ? -diaADia / diasRest : 0;
+    for (let d = diaHoje + 1; d <= diaDe(fim); d++) {
+      s += porDia;
+      for (const f of contam) if (f.dia === d) s += f.valor;
+      for (const f of faturas) if (f.dia === d) s -= f.valor;
+      if (s < menor.valor) menor = { valor: round2(s), data: `${ym}-${String(d).padStart(2, '0')}` };
+    }
+    return {
+      fim, saldoHoje, previsto, comEntradas, entra, sai, fatura, diaADia, diasRest, meses: hist.length,
+      desde: diaHoje + 1, fixas: contam, ocultas: fixas.filter(f => ocultas.has(f.chave)), faturas, menor
+    };
+  }
+
+  function renderPrevisaoCard() {
+    const el = $('#cardPrevisao');
+    const p = state.mes === mesAtualStr() ? previsaoDoMes() : null;
+    el.hidden = !p || p.diasRest <= 0;
+    if (el.hidden) return;
+    const linha = (rot, sub, v, extra = '') => `
+      <div class="pv-l"><span>${rot}${sub ? `<small>${sub}</small>` : ''}</span><span class="pv-v num ${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${v > 0 ? '+' : v < 0 ? '−' : ''}${moed(Math.abs(v))}${extra}</span></div>`;
+    const fixa = f => linha(esc(nomeDe(f.desc)), `dia ${String(f.dia).padStart(2, '0')} · ${esc(labelCat(f.catId))}`, f.valor,
+      ` <button type="button" class="lnk pv-x" data-ocultar="${esc(f.chave)}" title="Não contar na previsão" aria-label="Não contar na previsão">✕</button>`);
+    const comoAntes = `do dia ${String(p.desde).padStart(2, '0')} ao fim do mês, como nos ${p.meses === 1 ? 'último mês' : `${p.meses} meses anteriores`}`;
+    const entradas = p.fixas.filter(f => f.valor > 0);
+    const saidas = p.fixas.filter(f => f.valor < 0);
+    // O número grande é o que ainda deve sair (previsível); o saldo e as entradas vêm como contexto.
+    const aindaSai = round2(p.sai + p.fatura + p.diaADia);
+    const fixasEnt = p.entra > 0 ? ` e ${moed(p.entra)} que entram todo mês` : '';
+    const conta = p.previsto >= 0
+      ? `Com ${moed(p.saldoHoje)} hoje${fixasEnt}, sobram <b class="num">${moed(p.previsto)}</b> mesmo sem novas entradas.`
+      : `Com ${moed(p.saldoHoje)} hoje${fixasEnt}, faltam <b class="num">${moed(-p.previsto)}</b> de entradas para fechar o mês no positivo.`;
+    const ents = [p.comEntradas.min - p.previsto, p.comEntradas.max - p.previsto].map(v => round2(v));
+    const entrou = ents[1] > 0
+      ? `<p class="pv-faixa">Nos últimos meses, do dia ${String(p.desde).padStart(2, '0')} ao fim do mês entraram ${ents[1] - ents[0] < 1 ? moed(ents[1]) : `de ${moed(ents[0])} a ${moed(ents[1])}`}.</p>` : '';
+    const aviso = p.previsto >= 0 && p.menor.valor < 0
+      ? `<p class="pv-aviso">Atenção: antes disso, por volta de ${dataBR(p.menor.data)}, pode ficar negativo.</p>` : '';
+    el.innerHTML = `
+      <div class="cd-top"><span class="cd-lb">Até ${dataBR(p.fim)} ainda deve sair</span><span class="cd-lb">como nos meses anteriores</span></div>
+      <p class="pv-big num">${moed(aindaSai)}</p>
+      <p class="pv-conta">${conta}</p>
+      ${aviso}
+      ${entrou}
+      <details class="pv-det">
+        <summary>De onde vem esse número</summary>
+        ${entradas.map(fixa).join('')}
+        ${saidas.map(fixa).join('')}
+        ${p.faturas.map(f => linha(`Fatura ${esc(f.desc)}`, `vence dia ${String(f.dia).padStart(2, '0')}${f.parcial ? ' · só as compras já importadas' : ''}`, -f.valor)).join('')}
+        ${linha('Gastos do dia a dia', comoAntes, -p.diaADia)}
+        ${p.ocultas.length ? `<p class="mut pv-oc">Fora da conta: ${p.ocultas.map(f => `<button type="button" class="lnk" data-mostrar="${esc(f.chave)}">${esc(nomeDe(f.desc))}</button>`).join(', ')}</p>` : ''}
+      </details>`;
+    const salvar = async lista => {
+      state.fixasOcultas = lista;
+      await kvSet('fixasOcultas', lista);
+      renderPrevisaoCard();
+      $('.pv-det', el).open = true;
+    };
+    $$('[data-ocultar]', el).forEach(b => { b.onclick = () => salvar([...(state.fixasOcultas || []), b.dataset.ocultar]); });
+    $$('[data-mostrar]', el).forEach(b => { b.onclick = () => salvar((state.fixasOcultas || []).filter(k => k !== b.dataset.mostrar)); });
+  }
+  const nomeDe = desc => String(desc || '').split(' · ')[0];
 
   /**
    * Resumo do orçamento do mês: total usado, comparado com quanto do mês já passou, e o que importa

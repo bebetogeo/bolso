@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.7';
+  const VERSAO = '2.5.8';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -3210,6 +3210,9 @@
       });
 
       treinarIA();
+      // Quem restaurou acabou de usar uma cópia: o aviso de "última cópia" não dispara logo em seguida
+      // (a data fica no localStorage, que não vai junto na cópia).
+      localStorage.setItem('bolso-ultimo-backup', String(Date.now()));
       toast(`Cópia restaurada (${state.lancamentos.length} lançamentos)`);
       irPara('painel');
     } catch {
@@ -3335,7 +3338,34 @@
     };
   }
 
+  /**
+   * Linhas clicáveis que não são <button> (lançamentos, rateios, categorias do painel, contas e categorias
+   * em Ajustes): recebem foco pelo teclado e abrem com Enter ou espaço, como um botão.
+   */
+  const CLICAVEIS = 'li[data-id], li[data-conta-id], li[data-cat-edit], .ct[data-cid]';
+  function marcarClicaveis(raiz = document) {
+    const lista = raiz.matches && raiz.matches(CLICAVEIS) ? [raiz] : [];
+    for (const el of lista.concat($$(CLICAVEIS, raiz))) {
+      if (el.hasAttribute('tabindex')) continue;
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+    }
+  }
+  function ativarTeclado() {
+    marcarClicaveis();
+    new MutationObserver(mudancas => {
+      for (const m of mudancas) for (const n of m.addedNodes) if (n.nodeType === 1) marcarClicaveis(n);
+    }).observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('keydown', e => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches(CLICAVEIS)) {
+        e.preventDefault();
+        e.target.click();
+      }
+    });
+  }
+
   function bindEventos() {
+    ativarTeclado();
     $$('[data-go]').forEach(el => {
       el.onclick = () => irPara(el.dataset.go);
     });

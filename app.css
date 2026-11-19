@@ -154,10 +154,6 @@ ul {
   font-size: 0.88rem;
 }
 
-.apag {
-  opacity: 0.55;
-}
-
 body.privado .num,
 body.privado .valor,
 body.privado .cv,
@@ -406,119 +402,6 @@ header.top {
   gap: 8px;
 }
 
-/* Grid de KPIs (Entrou / Saiu lado a lado sem cortar + Sobrou abaixo) */
-.kpis {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.kpi {
-  background: var(--card);
-  border: 1px solid var(--borda);
-  border-radius: var(--raio);
-  padding: 14px 14px;
-  box-shadow: var(--sombra);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.kpi:nth-child(3),
-#kpiPrev {
-  grid-column: 1 / -1;
-}
-
-.kpi .lbl {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--mut);
-}
-
-#kEntrou, #kSaiu, #kSobra, #kPrev {
-  font-size: clamp(1.05rem, 4.5vw, 1.5rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-
-.kpi .sub {
-  font-size: 0.82rem;
-  color: var(--mut);
-}
-
-@media (max-width: 440px) {
-  .kpis {
-    gap: 8px;
-  }
-  .kpi {
-    padding: 12px 10px;
-  }
-}
-
-/* Faixa de saldos e faturas por conta */
-.contas-strip {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.conta-pill {
-  background: var(--card);
-  border: 1px solid var(--borda);
-  border-radius: var(--raio);
-  padding: 12px 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  cursor: pointer;
-  box-shadow: var(--sombra);
-}
-
-.conta-pill:active {
-  background: var(--card-alt);
-}
-
-.conta-pill .cn {
-  font-size: 0.84rem;
-  color: var(--mut);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.conta-pill .cv {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.conta-pill .csub {
-  font-size: 0.78rem;
-  color: var(--mut);
-}
-
-.badge-ok {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--pos);
-}
-
-.badge-warn {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #d99b26;
-  text-align: right;
-}
-
-.conta-pill > .csub {
-  font-size: 0.78rem;
-  color: var(--mut);
-}
-
 .nota-cartao {
   font-size: 0.8rem;
   margin-top: 4px;
@@ -578,70 +461,12 @@ header.top {
   flex-shrink: 0;
 }
 
-.tag-alta {
-  font-size: 0.72rem;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(229, 107, 111, 0.16);
-  color: var(--neg);
-}
-
-/* Barra de orçamento no painel */
-.orc-barra {
-  position: relative;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--card-alt);
-  overflow: visible;
-}
-
-.orc-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--pri);
-  transition: width 0.25s ease;
-}
-
-.orc-fill.alto {
-  background: #d99b26;
-}
-
-.orc-fill.estourou {
-  background: var(--neg);
-}
-
-.orc-hoje {
-  position: absolute;
-  top: -3px;
-  width: 2px;
-  height: 16px;
-  background: var(--fg);
-  border-radius: 2px;
-  opacity: 0.75;
-}
-
-.orc-txt {
-  font-size: 0.9rem;
-  color: var(--mut);
-  line-height: 1.45;
-}
-
-.orc-txt b {
-  color: var(--fg);
-}
-
 /* 6. Categorias, Subcategorias e Gráfico de 6 Meses
    -------------------------------------------------------------------------- */
 #cats {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.cat-bloco {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .cat {
@@ -663,232 +488,12 @@ header.top {
   font-variant-numeric: tabular-nums;
 }
 
-.trilho {
-  grid-column: 1 / -1;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--card-alt);
-  overflow: hidden;
-}
-
-.enche {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--pri);
-}
-
-.enche.livre {
-  opacity: 0.85;
-}
-
-.enche.estourou {
-  background: var(--neg);
-}
-
-.enche.sem {
-  background: #c5892f;
-}
-
-.cat .det {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--mut);
-}
-
-.subcats {
-  margin-left: 10px;
-  padding-left: 10px;
-  border-left: 2px solid var(--borda);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.subcat {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 6px;
-  border-radius: 8px;
-  font-size: 0.84rem;
-  color: var(--mut);
-  cursor: pointer;
-}
-
-.subcat:hover, .subcat:active {
-  background: var(--card-alt);
-  color: var(--fg);
-}
-
-/* Gráfico de últimos 6 meses */
-.hist-wrap {
-  display: grid;
-  grid-template-columns: 26px 1fr 26px;
-  align-items: center;
-  gap: 4px;
-}
-
-.hist-nav-btn {
-  appearance: none;
-  border: 1px solid var(--borda);
-  background: var(--card-alt);
-  color: var(--fg);
-  width: 26px;
-  height: 44px;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  cursor: pointer;
-}
-
 .hist {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 6px;
   align-items: end;
   padding-top: 6px;
-}
-
-.hcol {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 6px 2px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.hcol.atual {
-  background: var(--pri-suave);
-}
-
-.hbars {
-  height: 86px;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 4px;
-}
-
-.hbars .e, .hbars .s-stack {
-  width: 10px;
-  min-height: 2px;
-  border-radius: 4px 4px 2px 2px;
-  overflow: hidden;
-}
-
-.hbars .e {
-  background: var(--bar-2);
-}
-
-.s-stack {
-  display: flex;
-  flex-direction: column-reverse;
-}
-
-.s-seg {
-  display: block;
-  width: 100%;
-}
-
-.hcol .ve {
-  font-size: 0.68rem;
-  color: var(--pos);
-}
-
-.hcol .vs {
-  font-size: 0.68rem;
-  color: var(--fg);
-}
-
-.hcol .m {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--mut);
-  text-transform: capitalize;
-}
-
-.hcol.atual .m {
-  color: var(--pri);
-}
-
-.leg {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  font-size: 0.76rem;
-  color: var(--mut);
-}
-
-.leg span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.leg i {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-}
-
-.hist-resumo {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--borda);
-  font-size: 0.82rem;
-  color: var(--mut);
-}
-
-/* Maiores gastos (Top 5) */
-.top5 {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.top5 li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--borda);
-  cursor: pointer;
-}
-
-.top5 li:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.top5 .d {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.92rem;
-  font-weight: 500;
-  min-width: 0;
-}
-
-.top5 .d small {
-  color: var(--mut);
-  font-size: 0.78rem;
-  font-weight: 400;
-}
-
-.top5 .valor {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
 }
 
 /* 7. Lançamentos, Filtros, Triagem Rápida e Chips de Rateio
@@ -1160,31 +765,6 @@ details.ajuda dt {
 details.ajuda dd {
   color: var(--mut);
   margin-bottom: 6px;
-}
-
-/* Orçamento */
-.orc-l {
-  display: grid;
-  grid-template-columns: 1fr 116px;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--borda);
-}
-
-.orc-l:last-child {
-  border-bottom: 0;
-}
-
-.orc-l .sug {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--mut);
-}
-
-.orc-l input {
-  text-align: right;
-  font-weight: 600;
 }
 
 .tot {
@@ -1518,56 +1098,17 @@ dialog#dlg::backdrop {
   text-align: center;
 }
 
-/* Tabela mês a mês de cada conta (saldo inicial, entradas, saídas, saldo final) */
-.conta-tab { cursor: default; gap: 8px; }
-.tab-scroll { overflow-x: auto; margin: 0 -4px; }
-.tab-saldo { width: 100%; border-collapse: collapse; font-size: 0.8rem; white-space: nowrap; }
-.tab-saldo th, .tab-saldo td { padding: 6px 4px; text-align: right; border-top: 1px solid var(--borda); }
-.tab-saldo thead th { border-top: 0; font-size: 0.68rem; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: 0.03em; white-space: normal; vertical-align: bottom; }
-.tab-saldo th:first-child { text-align: left; text-transform: capitalize; }
-.tab-saldo tbody th small { display: block; font-weight: 400; color: var(--mut); text-transform: none; font-size: 0.68rem; }
-.tab-saldo tbody tr { cursor: pointer; }
-.tab-saldo tbody tr.atual { background: var(--card-alt); font-weight: 700; }
-.tab-saldo td:last-child { font-weight: 700; }
-@media (max-width: 440px) {
-  .tab-saldo { font-size: 0.72rem; letter-spacing: -0.02em; }
-  .tab-saldo th, .tab-saldo td { padding: 6px 2px; }
-  .tab-saldo thead th { font-size: 0.6rem; }
-  .conta-tab { padding-left: 10px; padding-right: 10px; }
-}
-
-/* Box do saldo total (topo do painel) */
-.card-saldo { gap: 6px; }
 .saldo-big { font-size: clamp(1.9rem, 9vw, 2.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--pos); }
 .saldo-big.neg { color: var(--neg); }
-.saldo-data { font-size: 0.8rem; margin-top: -2px; }
-.saldo-frase { font-size: 0.95rem; line-height: 1.45; margin: 4px 0 2px; }
-.saldo-det { font-size: 0.8rem; line-height: 1.45; }
-.hbars .e, .hbars .s-stack { width: 14px; }
-.s-seg { flex-shrink: 0; }
-
-/* Boxes por conta e cartão, logo abaixo do saldo total */
-.contas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-.conta-box { appearance: none; font: inherit; color: inherit; text-align: left; background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio); padding: 12px 14px; box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
-.conta-box:active { background: var(--card-alt); }
-.conta-box:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; }
-.cb-nome { font-size: 0.8rem; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cb-valor { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
-.cb-sub { font-size: 0.74rem; color: var(--mut); line-height: 1.35; }
-details.conta-tab > summary { list-style: none; cursor: pointer; }
-details.conta-tab > summary::-webkit-details-marker { display: none; }
-details.conta-tab > summary span::after { content: ' ▸'; color: var(--mut); }
-details.conta-tab[open] > summary span::after { content: ' ▾'; }
-.contas-strip { gap: 10px; }
 
 /* Filtro Todos / Entradas / Saídas */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--card-alt); border: 1px solid var(--borda); border-radius: 12px; }
 .seg button { appearance: none; border: 0; background: transparent; color: var(--mut); font: inherit; font-size: 0.9rem; font-weight: 600; padding: 8px 6px; border-radius: 9px; cursor: pointer; }
 .seg button.on { background: var(--card); color: var(--fg); box-shadow: var(--sombra); }
 .seg button:focus-visible { outline: 2px solid var(--pri); outline-offset: 1px; }
-.cb-ultima { border-top: 1px solid var(--borda); padding-top: 5px; margin-top: 3px; }
+[role="button"]:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; border-radius: 8px; }
+
 :root { --entrou: #a9dcbd; }
-.hbars .e { background: var(--entrou); }
 
 /* ==========================================================================
    Tela do mês, estilo Vivo (v2.0)

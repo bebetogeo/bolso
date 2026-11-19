@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.3';
+  const VERSAO = '2.5.4';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -26,7 +26,7 @@
     'saude:farmacia': 'DROGASIL|DROGA RAIA|RAIA|DROGARIA|DROGA=|DROGAO|DROGAL=|FARMAC|ULTRAFARMA|DROGARIAS PACHECO|ARAUJO LOJA|DROGARIA ARAUJO|PAGUE MENOS|PANVEL|NISSEI|VENANCIO|AGAFARMA|EXTRAFARMA|FARMA CONDE|UAI FARMA|DROGASMIL|MANIPULACAO',
     'saude:plano': 'UNIMED|OMINT|AMIL=|HAPVIDA|NOTREDAME|NOTRE DAME|GNDI|PREVENT SENIOR|SULAMERICA SAUDE|BRADESCO SAUDE|PORTO SEGURO SAUDE|CASSI=|GEAP=|LABORATORIO|LABORAT|HERMES PARDINI|FLEURY|SABIN=|LAVOISIER|DELBONI|DIAGNOSTIC|CLINICA|POLICLINICA|CONSULTORIO|ODONTO|ORTODONT|ORAL UNIC|DENTISTA|DENTAL=|HOSPITAL|PRONTO SOCORRO|MEDICO|MEDICA=|MEDICINA|FISIOTERAP|PSICOLOG|PSIQUIATR|NUTRICION|FONOAUDIOL|DOCTORALIA|VACINA',
     'saude:academia': 'SMART FIT|SMARTFIT|PANOBIANCO|SKYFIT|FITACTIVE|BLUEFIT|SELFIT|BODYTECH|BIO RITMO|BIORITMO|ACADEMIA|GYMPASS|WELLHUB|TOTALPASS|PILATES|CROSSFIT|NATACAO|YOGA=|IOGA=',
-    'saude': 'OTICA|OTICAS|MERCADAO DOS OCULOS|CHILLI BEANS',
+    'saude': 'GROWTH SUPP|OTICA|OTICAS|MERCADAO DOS OCULOS|CHILLI BEANS',
     'assinaturas:streaming': 'NETFLIX|SPOTIFY|AMAZON PRIME|AMAZONPRIME|PRIME VIDEO|HBOMAX|HBO MAX|HELPHBOMAX|DISNEY|GLOBOPLAY|YOUTUBE|DEEZER|PARAMOUNT|STAR PLUS|CRUNCHYROLL|APPLE TV|TELECINE|PREMIERE=|DAZN|MUBI=|AUDIBLE|KINDLE UNLIMITED|TIDAL=',
     'assinaturas:software': 'APPLE COM|APPLE SERVICES|GOOGLE=|GOOGLE ONE|ICLOUD|MICROSOFT|CHATGPT|OPENAI|ANTHROPIC|CLAUDE AI|CANVA|ADOBE|DROPBOX|NOTION|ZOOM US|LINKEDIN|MCAFEE|NORTON',
     'assinaturas': 'TINDER|BUMBLE|ASSINATURA',
@@ -39,14 +39,14 @@
     'compras:casa': 'LEROY|TOK STOK|TOKSTOK|CASAS BAHIA|PONTO FRIO|PONTOFRIO|FAST SHOP|KABUM|MADEIRAMADEIRA|MOBLY|ETNA=|CAMICADO|TELHANORTE|HAVAN=|SODIMAC|POLISHOP|IBYTE|LASER ELETRO|MMARTAN|PRECOLANDIA|CASA DO CONSTRUTOR|RI HAPPY|MARABRAZ|QUERO QUERO|CYBELAR|LOJAS KOERICH|LOJAS COLOMBO|LOJAS BENOIT|COPPEL|ARMAZEM PARAIBA|DAISO|LE BISCUIT|IMAGINARIUM|CASA E VIDEO|ORTOBOM|COLCHOES|MATERIAL DE CONSTRUCAO|MAT CONSTR|MATERIAIS DE CONSTRUCAO|HOME CENTER|FERRAGENS|FERRAMENTAS|VIDRACARIA|TINTAS=|MARCENARIA|ARMARINHO|UTILIDADES|IPLACE',
     'lazer:passeios': 'CINEMA|CINEMARK|MOVIECOM|KINOPLEX|CINEPOLIS|CINESYSTEM|UCI=|INGRESSO|TICKETMASTER|TICKET360|BILHETERIA|SYMPLA|EVENTIM|TEATRO|MUSEU|PARQUE DE DIVERSOES|ZOOLOGICO|AQUARIO|BOLICHE|KARAOKE|SOCIO TORCEDOR',
     'lazer:viagens': 'BOOKING|AIRBNB|HOTEL|HOTEIS|HOSTEL|IBIS=|MERCURE|NOVOTEL|HOLIDAY INN|BEST WESTERN|BLUE TREE|DAYS INN|RESORT|POUSADA|DECOLAR|EXPEDIA|TRIVAGO|HURB=|CVC=|MAXMILHAS|123MILHAS|SMILES|LATAM|GOL LINHAS|VOEGOL|AZUL LINHAS|VOEAZUL|AEROPORTO|DUTY FREE|DUFRY|CLICKBUS|BUSER|RODOVIARIA|PASSAGEM|PASSAGENS',
-    'lazer': 'STEAM=|STEAMGAMES|PLAYSTATION|XBOX|NINTENDO|BETANO|BET365',
+    'lazer': 'ARENA=|QUADRA=|STEAM=|STEAMGAMES|PLAYSTATION|XBOX|NINTENDO|BETANO|BET365',
     'educacao': 'ESCOLA|COLEGIO|EDUCAC|ENSINO|FACULDADE|UNIVERSIDADE|CURSO|MENSALIDADE ESCOLAR|MATRICULA|CRECHE|BERCARIO|IDIOMAS|KUMON|CNA=|MAPLE BEAR|SCHOOL OF ROCK|WIZARD|CCAA|FISK=|CULTURA INGLESA|OPEN ENGLISH|UDEMY|ALURA|COURSERA|HOTMART|DUOLINGO|ESTACIO|ANHANGUERA|UNOPAR|LIVRARIA|SARAIVA|ESTANTE VIRTUAL|PAPELARIA|KALUNGA',
     'pets': 'PET SHOP|PETSHOP|PET=|PETS=|PETZ|COBASI|PETLOVE|PETLAND|VETERIN|CLINICA VET|AGROPET|RACAO|RACOES|BANHO E TOSA|DOGHERO',
-    'tarifas': 'TARIFA|TAR PACOTE|PACOTE DE SERVICOS|CESTA DE SERVICOS|ANUIDADE|IOF=|JUROS=|ENCARGOS|MORA=|MULTA=|IPTU|IPVA|DARF|GRU=|SEFAZ|PREFEITURA|RECEITA FEDERAL|SIMPLES NACIONAL|DETRAN|LICENCIAMENTO|CARTORIO|EMOLUMENTOS|CUSTAS',
+    'tarifas': 'TARIFA|TAR PACOTE|PACOTE DE SERVICOS|CESTA DE SERVICOS|ANUIDADE|IOF=|JUROS=|ENCARGOS|MORA=|MULTA=|IPTU|IPVA|DARF|GRU=|SEFAZ|PREFEITURA|MUNICIPIO|RECEITA FEDERAL|RECEITA FED|CONSELHO REGIONAL|SIMPLES NACIONAL|DETRAN|LICENCIAMENTO|CARTORIO|EMOLUMENTOS|CUSTAS',
     'cuidados': 'SALAO|CABELEIR|BARBEARIA|BARBEIRO|MANICURE|ESMALTERIA|NAIL=|UNHAS|SOBRANCELHA|CILIOS|ESTETICA|DEPILACAO|ESPACO LASER|ESPACOLASER|DEPYL ACTION|FAST ESCOVA|NO VELLO|MAHOGANY|GRANADO|MASSAGEM|SPA=|BELEZA|COSMETIC|PERFUMARIA|BOTICARIO|EUDORA|NATURA=|AVON=|SEPHORA|QUEM DISSE BERENICE|TATUAGEM|TATTOO',
     'outros': 'SAQUE|DOACAO|VAKINHA|DIZIMO|IGREJA',
-    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|PAGAMENTO RECEBIDO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO|OPERACOES B3|COFRINHO|CAIXINHA|POUPANCA|RDB=|CDB=|LCI=|LCA=|CORRETORA|XP INVESTIMENTOS|NU INVEST|BRASILPREV|PGBL|VGBL',
-    'rendimentos': 'RENDIMENTO|REND PAGO|JUROS SOBRE CAPITAL|DIVIDENDO|ESTORNO|DEVOLUCAO|DEVOLVIDO|PIX ENVIO DEVOLVIDO|PIX REJEITADO|CASHBACK|REEMBOLSO|RESTITUICAO|NOTA FISCAL PAULISTA',
+    'transf': 'PAGAMENTO DE FATURA|PAGAMENTO FATURA|PAGTO FATURA|PGTO FATURA|FATURA CARTAO|PAGAMENTO DE CARTAO|PAGAMENTO CARTAO|PAGAMENTO RECEBIDO|DEBITO AUTOMATICO CARTAO|OUROCARD|FATURA XP|BB RENDE FACIL|RENDE FACIL|RESGATE|APLICACAO|APLIC INVEST|RESG INVEST|TESOURO DIRETO|OPERACOES B3|COFRINHO|ITAU BLACK|ITAU UNICLASS|ITAU PERSONNALITE|ITAUCARD|FATURA PERSON|COR COMP|ITAUCOR|CAIXINHA|POUPANCA|RDB=|CDB=|LCI=|LCA=|CORRETORA|XP INVESTIMENTOS|NU INVEST|BRASILPREV|PGBL|VGBL',
+    'rendimentos': 'RENDIMENTO|REND PAGO|JUROS SOBRE CAPITAL|DIVIDENDO|ESTORNO|DEVOLUCAO|DEVOLVIDO|PIX ENVIO DEVOLVIDO|PIX REJEITADO|CASHBACK|REEMBOLSO|DEV PIX|COR JURS|BRADESCO SAUDE|SULAMERICA SAUDE|PORTO SEGURO SAUDE|RESTITUICAO|NOTA FISCAL PAULISTA',
     'salario': 'SALARIO|PRO LABORE|PROVENTOS|FOLHA DE PAGAMENTO|REMUNERACAO|ORDENADO|ADIANTAMENTO SALARIAL|PLR=|APOSENTADORIA|BENEFICIO INSS'
   };
   const REGRAS_PADRAO = Object.entries(REGRAS_POR_CAT)
@@ -71,6 +71,7 @@
     'ARQUITETURA', 'TRANSPORTES?', 'TURISMO', 'EVENTOS', 'MODAS', 'CALCADOS', 'ALIMENTOS', 'BEBIDAS', 'PRODUTOS', 'ARTIGOS',
     'PRESENTES', 'PAPELARIA', 'ESPORTES?', 'MARKETPLACE', 'PAGTO', 'NEGOCIOS', 'COSMETICOS'
   ].join('|') + ') ');
+  const RE_CNPJ = /\b\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}\b/;
 
   const CATS_PADRAO = [
     {
@@ -380,7 +381,7 @@
     const mudados = new Set(conciliarTransferencias());
     for (const tx of state.lancamentos) {
       if (tx.catId) continue;
-      const sug = classificarPorRegra(tx.desc, tx.valor);
+      const sug = classificarPorRegra(tx.descHash || tx.desc, tx.valor);
       if (sug) {
         Object.assign(tx, { catId: sug.catId, subId: sug.subId, catOrigem: 'regra' });
         mudados.add(tx);
@@ -456,7 +457,7 @@
     let semCat = 0;
     for (const tx of state.lancamentos) {
       if (tx.catOrigem !== 'antigo') continue;
-      const sug = classificarPorRegra(tx.desc, tx.valor);
+      const sug = classificarPorRegra(tx.descHash || tx.desc, tx.valor);
       tx.catId = sug ? sug.catId : '';
       tx.subId = sug ? sug.subId : '';
       tx.catOrigem = sug ? 'regra' : '';
@@ -511,7 +512,14 @@
   // Texto da descrição com espaços nas pontas, para casar regras no começo das palavras.
   // "PostoBomBomLtda" → "Posto Bom Bom Ltda" (algumas maquininhas juntam as palavras).
   // Se um classificador.js antigo vier do cache junto com este app.js, segue sem a limpeza em vez de travar.
-  const limparPrefixos = desc => (BolsoIA.limparPrefixos ? BolsoIA.limparPrefixos(desc) : String(desc || ''));
+  // Corta o que vem depois do CPF/CNPJ de quem recebeu ("- •••.864.096-•• - CECM MEDICOS ... Agência: ..."):
+  // o banco dele não diz nada sobre a compra e fazia "MEDICOS" pegar uma quadra. A ordem do texto fica igual.
+  const semBancoDestino = desc => String(desc || '')
+    .replace(/\s-\s(?:•••|\d{2}\.?\d{3}\.?\d{3}\/\d{4}|\d{3}\.\d{3}\.\d{3}-\d{2}).*$/, '');
+  const limparPrefixos = desc => {
+    const d = semBancoDestino(desc);
+    return BolsoIA.limparPrefixos ? BolsoIA.limparPrefixos(d) : d;
+  };
   const textoBusca = desc => ` ${norm(limparPrefixos(desc).replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2')).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim()} `;
   function casaRegra(alvo, texto, inteira, daUsuaria = false) {
     let t = norm(texto).replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
@@ -529,11 +537,11 @@
       if (c && r.texto && casaRegra(alvo, r.texto, false, true)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
     }
     if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
-    // Para saber se quem recebe é empresa, sem o banco que o Nubank põe no fim ("... - NU PAGAMENTOS - IP").
-    const quem = textoBusca(BolsoPDF.limparNubank(desc));
+    // Para saber se quem recebe é empresa: sem o banco que o Nubank põe no fim ("... - NU PAGAMENTOS - IP").
+    const quem = alvo;
     for (const r of comGenericas ? [...REGRAS_PADRAO, ...REGRAS_GENERICAS] : REGRAS_PADRAO) {
       if (r.sinal && Math.sign(valor) !== r.sinal) continue;
-      if (r.pessoa && RE_EMPRESA.test(quem)) continue;
+      if (r.pessoa && (RE_EMPRESA.test(quem) || RE_CNPJ.test(desc))) continue;
       if (!casaRegra(alvo, r.texto, r.inteira)) continue;
       if (!r.catId) return null;
       const c = getCat(r.catId);
@@ -552,7 +560,7 @@
   function classificar(desc, valor, contaId = '') {
     const porRegra = classificarPorRegra(desc, valor, false);
     if (porRegra) return porRegra;
-    const p = BolsoIA.prever(state.ia, { desc, valor, cartao: ehCartao(contaId) }, key => {
+    const p = BolsoIA.prever(state.ia, { desc: limparPrefixos(desc), valor, cartao: ehCartao(contaId) }, key => {
       const c = getCat(key.split(':')[0]);
       return Boolean(c) && tipoCombina(c, valor);
     });
@@ -751,7 +759,7 @@
   }
 
   const RE_TRANSF = /PIX|TED|DOC|TEV|TRANSF|FATURA|PAGAMENTO|RESGATE|APLIC/;
-  const RE_ESTORNO = /ESTORN|DEVOLU|DEVOLVID|REEMBOLS|CANCELAMENTO|CHARGEBACK|REJEITAD|NAO EFETUAD/;
+  const RE_ESTORNO = /ESTORN|DEVOLU|DEVOLVID|\bDEV PIX\b|REEMBOLS|CANCELAMENTO|CHARGEBACK|REJEITAD|NAO EFETUAD/;
   const PALAVRAS_ESTORNO = new Set('ESTORNO ESTORNADO DEVOLUCAO DEVOLVIDO DEVOLVIDA REEMBOLSO CANCELAMENTO CHARGEBACK REJEITADO NAO EFETUADO ERRO ENVIO'.split(' '));
 
   /**
@@ -806,14 +814,29 @@
     //    feito à mão): a compra que voltou não conta como gasto, nem o dinheiro de volta como entrada.
     for (const tx of estornosAbatidos()) mudados.add(tx);
 
-    // 1. Saída numa conta com entrada de mesmo valor em outra
-    const entradas = state.lancamentos.filter(b => b.valor > 0 && livre(b));
+    // 1. Saída numa conta com entrada de mesmo valor em outra. Só vale para Pix/TED sem categoria de loja
+    //    (aplicação, quadra, mercado... já classificados por regra ficam de fora) e, quando os dois lados
+    //    trazem nome, com um nome em comum ("Antonio Roberto Nunes Silva" no Nubank e "PIX TRANSF Antonio"
+    //    no Itaú). Nos extratos do Antônio, só pelo valor e pela data, 13 de 31 pares eram de outras pessoas.
+    const livreTransf = tx => livre(tx) && !(tx.catOrigem === 'regra' && tx.catId && tx.catId !== 'pix');
+    const nomes = tx => {
+      // "NOME · tipo" (Nubank limpo, BB) ou "Transferência enviada pelo Pix - NOME" (Nubank original)
+      const d = semBancoDestino(tx.descHash || tx.desc);
+      const parte = d.includes(' · ') ? d.split(' · ')[0] : d.split(' - ').pop();
+      return BolsoIA.tokens(parte).filter(w => !/^(PELO|PELA|ENVIADA|RECEBIDA|QRS|TEF|CXE)$/.test(w));
+    };
+    const mesmoNome = (a, b) => {
+      const na = nomes(a);
+      const nb = nomes(b);
+      return !na.length || !nb.length || na.some(w => nb.includes(w));
+    };
+    const entradas = state.lancamentos.filter(b => b.valor > 0 && livreTransf(b));
     const usadas = new Set();
     for (const a of state.lancamentos) {
-      if (a.valor >= 0 || !livre(a)) continue;
+      if (a.valor >= 0 || !livreTransf(a)) continue;
       const par = entradas
         .filter(b => !usadas.has(b.id) && b.contaId !== a.contaId &&
-          Math.abs(b.valor + a.valor) <= 0.02 && Math.abs(dia(b) - dia(a)) <= 3)
+          Math.abs(b.valor + a.valor) <= 0.02 && Math.abs(dia(b) - dia(a)) <= 3 && mesmoNome(a, b))
         .sort((x, y) => Math.abs(dia(x) - dia(a)) - Math.abs(dia(y) - dia(a)))[0];
       if (!par) continue;
       usadas.add(par.id);
@@ -1525,7 +1548,7 @@
     const add = (catId, subId, label, cls) => {
       if (!chips.some(c => c.catId === catId && c.subId === subId)) chips.push({ catId, subId, label, cls });
     };
-    const sug = classificar(tx.desc, tx.valor, tx.contaId);
+    const sug = classificar(tx.descHash || tx.desc, tx.valor, tx.contaId);
     if (sug) add(sug.catId, sug.subId || '', `✦ ${labelCat(sug.catId, sug.subId)}`, 'qchip qchip-ia');
     const serve = cid => {
       const c = getCat(cid);
@@ -1761,11 +1784,13 @@
       const fitid = tagVal(b, 'FITID');
       const name = tagVal(b, 'NAME');
       const memo = tagVal(b, 'MEMO');
-      const desc = limparDescOFX(name, memo);
+      const bruta = limparDescOFX(name, memo);
+      const desc = Number(bankId) === 260 && typeof BolsoPDF !== 'undefined' ? BolsoPDF.limparNubank(bruta) : bruta;
 
       itens.push({
         data: dt,
         desc,
+        descHash: bruta,
         valor: val,
         fitid: fitid || '',
         parcela: ''
@@ -2130,12 +2155,14 @@
       }
       existentes.set(chave, true);
 
-      const sug = classificarPorRegra(it.desc, it.valor);
+      const sug = classificarPorRegra(it.descHash || it.desc, it.valor);
       novos.push({
         id: uid('tx'),
         contaId: conta.id,
         data: it.data,
         desc: it.desc,
+        // descrição original do arquivo, quando foi limpa (Nubank): as regras ainda veem o CNPJ de quem recebeu
+        ...(it.descHash && it.descHash !== it.desc ? { descHash: it.descHash } : {}),
         valor: it.valor,
         catId: sug ? sug.catId : '',
         subId: sug ? sug.subId : '',

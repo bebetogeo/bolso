@@ -1,4 +1,4 @@
-const CACHE = 'bolso-v2.3.0';
+const CACHE = 'bolso-v2.4.0';
 const ATIVOS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ATIVOS = [
   './extrato-pdf.js',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
+  './vendor/xlsx.full.min.js',
   './manifest.webmanifest',
   './icons/mask.svg',
   './icons/icon-192.png',

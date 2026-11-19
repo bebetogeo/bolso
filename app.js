@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.3.0';
+  const VERSAO = '2.4.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1539,6 +1539,8 @@
     return {
       chaveConta,
       nomeConta,
+      codBanco: bankId,
+      numeroConta: acctId === 'principal' ? '' : acctId,
       tipoConta: isCard ? 'cartao' : 'corrente',
       saldoExtrato: Number.isFinite(balAmt) ? round2(balAmt) : null,
       saldoExtratoData: dtAsof,
@@ -1604,6 +1606,29 @@
     return base.charAt(0).toUpperCase() + base.slice(1);
   }
 
+  /**
+   * A conta que já tem boa parte destes lançamentos (mesmo dia e valor): um CSV do mesmo período de uma
+   * conta já importada por PDF ou OFX cai na conta certa em vez de criar outra (e duplicar tudo).
+   */
+  function contaComMesmosLancamentos(pares, aceita = () => true) {
+    const chaves = new Set();
+    for (const { data, valor } of pares) {
+      if (data && Number.isFinite(valor)) chaves.add(`${data}|${Math.round(Math.abs(valor) * 100)}`);
+    }
+    if (chaves.size < 3) return null;
+    let melhor = null;
+    let max = 0;
+    for (const c of state.contas) {
+      if (!aceita(c)) continue;
+      const daConta = new Set(state.lancamentos.filter(tx => tx.contaId === c.id)
+        .map(tx => `${tx.data}|${Math.round(Math.abs(tx.valor) * 100)}`));
+      let n = 0;
+      for (const k of chaves) if (daConta.has(k)) n++;
+      if (n > max) { max = n; melhor = c; }
+    }
+    return max >= 3 && max >= chaves.size * 0.3 ? melhor : null;
+  }
+
   function abrirMapeamentoCSV(fileName, parsed) {
     const { headers, rows } = parsed;
     const hNorm = headers.map(norm);
@@ -1635,7 +1660,8 @@
     $('#mInv').checked = pareceFatura && maioriaPos && idxDeb < 0;
 
     const mConta = $('#mConta');
-    const contaCartaoExistente = pareceFatura ? state.contas.find(c => c.tipo === 'cartao') : null;
+    const contaCartaoExistente = contaComMesmosLancamentos(rows.map(r => ({ data: parseData(r[idxData]), valor: parseValor(r[idxVal]) })))
+      || (pareceFatura ? state.contas.find(c => c.tipo === 'cartao') : null);
     mConta.innerHTML = `<option value="__nova__">+ Criar nova conta / cartão</option>` +
       state.contas.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('');
 
@@ -1664,9 +1690,12 @@
     const inv = $('#mInv').checked;
 
     const itens = [];
+    // Nubank: coluna "Identificador" (um código único por lançamento) e descrição longa com CPF e banco.
+    const iId = parsed.headers.findIndex(h => /^IDENTIFICADOR$/.test(norm(h)));
     for (const r of parsed.rows) {
       const dt = parseData(r[iData]);
-      const desc = String(r[iDesc] || '').replace(/\s+/g, ' ').trim();
+      const bruta = String(r[iDesc] || '').replace(/\s+/g, ' ').trim();
+      const desc = iId >= 0 ? BolsoPDF.limparNubank(bruta) : bruta;
       if (!dt || !desc) continue;
 
       let val = NaN;
@@ -1690,7 +1719,7 @@
         if (m && Number(m[2]) > 1) parcela = `${Number(m[1])}/${Number(m[2])}`;
       }
 
-      itens.push({ data: dt, desc, valor: val, fitid: '', parcela });
+      itens.push({ data: dt, desc, descHash: bruta, valor: val, fitid: iId >= 0 ? String(r[iId] || '').trim() : '', parcela });
     }
     return itens;
   }
@@ -1724,13 +1753,72 @@
     return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31 ? `${m[1]}-${m[2]}-${m[3]}` : '';
   }
 
-  async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null, fatura = '', saldos = null }) {
+  /**
+   * A mesma conta, venha o extrato em OFX ou em PDF: primeiro pela chave do arquivo, depois pelo
+   * código do banco + número da conta (só os dígitos, sem zeros à esquerda; com ou sem o dígito
+   * verificador; o OFX do Itaú, por exemplo, pode trazer agência e conta juntas).
+   */
+  function digitosConta(s) {
+    return String(s || '').replace(/\D/g, '').replace(/^0+/, '');
+  }
+  function mesmoNumeroConta(a, b) {
+    a = digitosConta(a);
+    b = digitosConta(b);
+    const pares = [[a, b], [a.slice(0, -1), b], [a, b.slice(0, -1)]];
+    return pares.some(([x, y]) => x.length >= 4 && y.length >= 4 && (x.endsWith(y) || y.endsWith(x)));
+  }
+  function bancoENumero(conta) {
+    if (conta.codBanco || conta.numeroConta) return { banco: conta.codBanco, numero: conta.numeroConta };
+    const m = /^(?:ofx|pdf):([^:]*):([^:]*):/.exec(conta.chaveOfx || ''); // contas criadas antes da 2.3
+    return m ? { banco: m[1], numero: m[2] === 'principal' ? '' : m[2] } : { banco: '', numero: '' };
+  }
+  function acharOuCriarConta(lido) {
+    const tipoBate = c => (c.tipo === 'cartao') === (lido.tipoConta === 'cartao');
+    let conta = state.contas.find(c => c.chaveOfx === lido.chaveConta)
+      || state.contas.find(c => {
+        const { banco, numero } = bancoENumero(c);
+        return tipoBate(c) && banco && lido.codBanco
+          && Number(banco) === Number(lido.codBanco) && mesmoNumeroConta(numero, lido.numeroConta);
+      })
+      // conta criada por um CSV (que não diz banco nem número) com os mesmos lançamentos
+      || contaComMesmosLancamentos(lido.itens || [], c => {
+        const { banco, numero } = bancoENumero(c);
+        return tipoBate(c) && !(banco && numero);
+      });
+    if (!conta) {
+      conta = {
+        id: uid('ct'),
+        chaveOfx: lido.chaveConta,
+        nome: lido.nomeConta,
+        tipo: lido.tipoConta,
+        saldoInicial: 0,
+        fechaDia: lido.tipoConta === 'cartao' ? 20 : null
+      };
+      state.contas.push(conta);
+    }
+    if (!conta.codBanco && lido.codBanco) conta.codBanco = lido.codBanco;
+    if (!conta.numeroConta && lido.numeroConta) conta.numeroConta = lido.numeroConta;
+    return conta;
+  }
+
+  /** Formato de onde veio um lançamento importado (os antigos não guardavam: deduz pelo FITID). */
+  const fonteDe = tx => tx.fonte || (tx.fitid ? 'ofx' : 'csv');
+
+  async function importarItens({ conta, itens, saldoExtrato = null, saldoExtratoData = null, fatura = '', saldos = null, fonte = 'csv' }) {
     if (conta.tipo !== 'cartao') fatura = '';
-    // Saldos de fim de dia que o extrato em PDF mostra (servem para conferir os meses).
-    if (saldos && Object.keys(saldos).length) conta.saldos = { ...(conta.saldos || {}), ...saldos };
+    // Saldos de fim de dia que o extrato em PDF/planilha mostra (servem para conferir os meses). Onde já há
+    // saldos de outro arquivo, valem os de antes: formatos diferentes podem datar o mesmo lançamento em dias
+    // diferentes (o PDF do Itaú usa o dia do Pix; a planilha, o dia em que o banco lançou). Só entram os de
+    // fora do período que já tinha saldo.
+    const datasSaldo = Object.keys(conta.saldos || {}).sort();
+    const primeiroSaldo = datasSaldo[0] || '';
+    const ultimoSaldo = datasSaldo[datasSaldo.length - 1] || '';
+    const saldosNovos = Object.fromEntries(Object.entries(saldos || {})
+      .filter(([d]) => !datasSaldo.length || d > ultimoSaldo || d < primeiroSaldo));
+    if (Object.keys(saldosNovos).length) conta.saldos = { ...(conta.saldos || {}), ...saldosNovos };
     if (typeof saldoExtrato === 'number' && Number.isFinite(saldoExtrato)) {
       const data = saldoExtratoData || hojeStr();
-      conta.saldos = { ...(conta.saldos || {}), [data]: saldoExtrato };
+      if (data > ultimoSaldo || !(data in (conta.saldos || {}))) conta.saldos = { ...(conta.saldos || {}), [data]: saldoExtrato };
       if (!conta.saldoExtratoData || data >= conta.saldoExtratoData) {
         conta.saldoExtrato = saldoExtrato;
         conta.saldoExtratoData = data;
@@ -1746,6 +1834,33 @@
       if (tx.hashImport) existentes.set(tx.hashImport, tx);
     }
     const marcados = [];
+    // Lançamentos desta conta vindos de OUTRO formato (OFX × PDF × planilha × CSV), por valor: a descrição
+    // muda de um formato para o outro e a data pode mudar uns dias (Pix no sábado, lançado na segunda).
+    // O mesmo valor até 4 dias antes ou depois é o mesmo lançamento; vale o dia mais perto e, no empate, o mesmo nome.
+    const deOutroFormato = new Map();
+    for (const tx of state.lancamentos) {
+      if (tx.contaId !== conta.id || !(tx.fitid || tx.hashImport) || fonteDe(tx) === fonte) continue;
+      const k = Math.round(tx.valor * 100);
+      if (!deOutroFormato.has(k)) deOutroFormato.set(k, []);
+      deOutroFormato.get(k).push(tx);
+    }
+    const dias = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / 864e5;
+    const mesmoNome = (a, b) => {
+      const ta = new Set(BolsoIA.tokens(a));
+      return BolsoIA.tokens(b).some(t => ta.has(t));
+    };
+    const acharDeOutroFormato = it => {
+      const lista = deOutroFormato.get(Math.round(it.valor * 100)) || [];
+      let melhor = -1;
+      let nota = Infinity;
+      lista.forEach((tx, i) => {
+        const d = dias(tx.data, it.data);
+        if (d > 4) return;
+        const n = d + (mesmoNome(tx.desc, it.desc) ? 0 : 2.5);
+        if (n < nota) { nota = n; melhor = i; }
+      });
+      return melhor >= 0 ? lista.splice(melhor, 1)[0] : null;
+    };
 
     const occNoArquivo = new Map();
     const novos = [];
@@ -1753,14 +1868,14 @@
 
     for (const it of itens) {
       const centavos = Math.round(it.valor * 100);
-      const baseKey = `${conta.id}|${it.data}|${norm(it.desc)}|${centavos}`;
+      const baseKey = `${conta.id}|${it.data}|${norm(it.descHash || it.desc)}|${centavos}`;
       const occ = (occNoArquivo.get(baseKey) || 0) + 1;
       occNoArquivo.set(baseKey, occ);
       const hashImport = `${baseKey}#${occ}`;
       // Alguns bancos repetem o FITID em lançamentos diferentes: compara junto com data e valor.
       const chave = it.fitid ? `fit|${it.fitid}|${it.data}|${centavos}` : hashImport;
 
-      const jaTem = existentes.get(chave);
+      const jaTem = existentes.get(chave) || (it.fitid ? existentes.get(hashImport) : null);
       if (jaTem) {
         duplicados++;
         // Reimportar uma fatura antiga marca a qual fatura cada compra pertence.
@@ -1768,6 +1883,13 @@
           jaTem.fatura = fatura;
           marcados.push(jaTem);
         }
+        continue;
+      }
+      const outro = acharDeOutroFormato(it);
+      if (outro) {
+        duplicados++;
+        // Guarda o FITID para a próxima importação em OFX reconhecer direto.
+        if (it.fitid && !outro.fitid) { outro.fitid = it.fitid; marcados.push(outro); }
         continue;
       }
       existentes.set(chave, true);
@@ -1785,6 +1907,7 @@
         parcela: it.parcela || '',
         fitid: it.fitid || '',
         fatura,
+        fonte,
         hashImport
       });
     }
@@ -1840,7 +1963,7 @@
 
     for (const file of files) {
       try {
-        if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+        if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf' || BolsoPDF.ehPlanilha(file)) {
           await importarPDF(file);
           continue;
         }
@@ -1853,20 +1976,10 @@
             adicionarResultadoImport(file.name, null, 'Nenhum lançamento encontrado neste arquivo OFX.');
             continue;
           }
-          let conta = state.contas.find(c => c.chaveOfx === parsed.chaveConta);
-          if (!conta) {
-            conta = {
-              id: uid('ct'),
-              chaveOfx: parsed.chaveConta,
-              nome: parsed.nomeConta,
-              tipo: parsed.tipoConta,
-              saldoInicial: 0,
-              fechaDia: parsed.tipoConta === 'cartao' ? 20 : null
-            };
-            state.contas.push(conta);
-          }
+          const conta = acharOuCriarConta(parsed);
           const res = await importarItens({
             conta,
+            fonte: 'ofx',
             fatura: vencimentoDoNome(file.name),
             itens: parsed.itens,
             saldoExtrato: parsed.saldoExtrato,
@@ -1890,10 +2003,11 @@
     render();
   }
 
-  /** Extrato em PDF: lido aqui mesmo (extrato-pdf.js), sem mandar o arquivo para lugar nenhum. */
+  /** Extrato em PDF ou planilha (XLS): lido aqui mesmo (extrato-pdf.js), sem mandar o arquivo para lugar nenhum. */
   async function importarPDF(file) {
     const nome = file.name;
-    adicionarResultadoImport(nome, null, '', 'Lendo o PDF…');
+    const planilha = BolsoPDF.ehPlanilha(file);
+    adicionarResultadoImport(nome, null, '', planilha ? 'Lendo a planilha…' : 'Lendo o PDF…');
     let lido;
     try {
       lido = await BolsoPDF.ler(file, errou => window.prompt(errou
@@ -1901,22 +2015,19 @@
         : 'Este PDF tem senha (alguns bancos usam parte do CPF). Digite a senha:'));
     } catch (err) {
       const senha = err && /Password/i.test(err.name || '');
-      adicionarResultadoImport(nome, null, senha ? 'O PDF tem senha e não foi aberto.' : `Não foi possível abrir o PDF: ${err.message || err}`);
+      adicionarResultadoImport(nome, null, senha ? 'O PDF tem senha e não foi aberto.' : `Não foi possível abrir o arquivo: ${err.message || err}`);
       return;
     }
     if (!lido.itens.length) {
       adicionarResultadoImport(nome, null, lido.temTexto
-        ? 'Não encontrei lançamentos neste PDF. Se o banco tiver, prefira o extrato em OFX ou CSV.'
+        ? `Não encontrei lançamentos ${planilha ? 'nesta planilha' : 'neste PDF'}. Se o banco tiver, prefira o extrato em OFX ou CSV.`
         : 'Este PDF parece ser uma imagem (sem texto). Peça ao banco o extrato em OFX, CSV ou um PDF com texto.');
       return;
     }
-    let conta = state.contas.find(c => c.chaveOfx === lido.chaveConta);
-    if (!conta) {
-      conta = { id: uid('ct'), chaveOfx: lido.chaveConta, nome: lido.nomeConta, tipo: lido.tipoConta, saldoInicial: 0, fechaDia: null };
-      state.contas.push(conta);
-    }
+    const conta = acharOuCriarConta(lido);
     const res = await importarItens({
       conta,
+      fonte: planilha ? 'xls' : 'pdf',
       itens: lido.itens,
       saldos: lido.saldos,
       saldoExtrato: lido.saldoExtrato,

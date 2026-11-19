@@ -77,7 +77,7 @@
       const n = norm(it.s);
       const c = (it.x + it.x2) / 2;
       if (/^DATA\b/.test(n)) cols.push({ tipo: 'data', x: it.x, c });
-      else if (/^SALDO\b/.test(n)) cols.push({ tipo: 'saldo', x: it.x, c });
+      else if (/^SALDOS?\b/.test(n)) cols.push({ tipo: 'saldo', x: it.x, c });
       else if (/^(VALOR|VLR|MONTANTE)\b/.test(n)) cols.push({ tipo: 'valor', x: it.x, c });
       else if (/^(DEBITO|SAIDA)/.test(n)) cols.push({ tipo: 'debito', x: it.x, c });
       else if (/^(CREDITO|ENTRADA)/.test(n)) cols.push({ tipo: 'credito', x: it.x, c });
@@ -97,22 +97,124 @@
   const RE_TIPO = /^(PIX|PAGAMENTO|PAGTO|PGTO|TED|DOC|TEV|TRANSF|TRANSFERENCIA|COMPRA|DEBITO|CREDITO|SAQUE|DEPOSITO|SAIDA|ENTRADA|RESGATE|APLICACAO|RENDIMENTO|TARIFA|ESTORNO|DEVOLUCAO|BOLETO)/;
 
   function montarDescricao(partes) {
-    const [a, b] = partes.map(p => p.join(' ').replace(/\s+/g, ' ').trim());
+    const [a, b] = partes.map(p => p.join(' ').replace(/\s+/g, ' ').trim()
+      .replace(/(\D)\d{2}\/\d{2}$/, '$1').trim()); // planilha do Itaú: "PIX TRANSF ANTONIO04/11"
     if (a && b) return RE_TIPO.test(norm(a)) ? `${b} · ${a}` : `${a} · ${b}`;
     return a || b || '';
   }
 
-  function detectarBanco(txt) {
-    const n = norm(txt);
-    const bancos = [
-      [/\bITAU\b/, 'Itaú', 'itau'], [/BANCO DO BRASIL|\bBB\b/, 'Banco do Brasil', 'bb'], [/BRADESCO/, 'Bradesco', 'bradesco'],
-      [/SANTANDER/, 'Santander', 'santander'], [/CAIXA ECONOMICA|\bCAIXA\b/, 'Caixa', 'caixa'],
-      [/NU PAGAMENTOS|NUBANK/, 'Nubank', 'nubank'], [/BANCO INTER\b|\bINTER\b/, 'Inter', 'inter'],
-      [/SICOOB/, 'Sicoob', 'sicoob'], [/SICREDI/, 'Sicredi', 'sicredi'], [/\bC6\b/, 'C6 Bank', 'c6'],
-      [/\bXP\b/, 'XP', 'xp'], [/MERCADO PAGO/, 'Mercado Pago', 'mercadopago'], [/PICPAY/, 'PicPay', 'picpay']
-    ];
-    const b = bancos.find(([re]) => re.test(n));
-    return b ? { nome: b[1], id: b[2] } : { nome: 'Extrato PDF', id: 'pdf' };
+  /**
+   * Descrição do Nubank ("Transferência enviada pelo Pix - FULANO - •••.123.456-•• - BANCO (0341) Agência...")
+   * no mesmo jeito das outras: "FULANO · Transferência enviada pelo Pix". Usada no PDF e no CSV do Nubank.
+   */
+  function limparNubank(desc) {
+    const s = String(desc || '').replace(/\s+/g, ' ').trim();
+    const partes = s.split(' - ').map(p => p.trim());
+    if (partes.length < 2 || !/^(Transfer|Pagamento|Compra|Pix|Resgate|Aplica|Dep[oó]sito|Estorno|Reembolso|Saque|Recarga|D[eé]bito|Cr[eé]dito)/i.test(partes[0])) return s;
+    const nome = partes[1];
+    if (!nome || /^[\d•.\/-]+$/.test(nome)) return partes[0];
+    return `${nome} · ${partes[0]}`;
+  }
+
+  // [padrão, nome, id, código do banco (o mesmo BANKID do OFX), site]
+  const BANCOS = [
+    [/\bITAU\b/, 'Itaú', 'itau', '341', /itau\.com\.br/], [/BANCO DO BRASIL|\bBB\b/, 'Banco do Brasil', 'bb', '1', /\bbb\.com\.br/],
+    [/BRADESCO/, 'Bradesco', 'bradesco', '237', /bradesco\.com\.br/], [/SANTANDER/, 'Santander', 'santander', '33', /santander\.com\.br/],
+    [/CAIXA ECONOMICA|\bCAIXA\b/, 'Caixa', 'caixa', '104', /caixa\.gov\.br/], [/NU PAGAMENTOS|NUBANK/, 'Nubank', 'nubank', '260', /nubank\.com\.br/],
+    [/BANCO INTER\b|\bINTER\b/, 'Inter', 'inter', '77', /bancointer\.com\.br|\binter\.co\b/], [/SICOOB/, 'Sicoob', 'sicoob', '756', /sicoob\.com\.br/],
+    [/SICREDI/, 'Sicredi', 'sicredi', '748', /sicredi\.com\.br/], [/\bC6\b/, 'C6 Bank', 'c6', '336', /c6bank\.com\.br/],
+    [/\bXP\b/, 'XP', 'xp', '348', /\bxpi?\.com\.br/], [/MERCADO PAGO/, 'Mercado Pago', 'mercadopago', '323', /mercadopago\.com\.br/],
+    [/PICPAY/, 'PicPay', 'picpay', '380', /picpay\.com/]
+  ];
+
+  /**
+   * O banco do extrato. Os nomes de outros bancos aparecem nos Pix (o extrato do Nubank cita "ITAÚ UNIBANCO"
+   * em cada transferência), então vale primeiro o site do banco, depois o topo da 1ª página, por último o texto todo.
+   */
+  function detectarBanco(linhas) {
+    const tudo = linhas.map(textoLinha).join('\n');
+    const topo = norm(linhas.slice(0, 12).map(textoLinha).join('\n'));
+    const b = BANCOS.find(x => x[4].test(tudo.toLowerCase()))
+      || BANCOS.find(([re]) => re.test(topo))
+      || BANCOS.find(([re]) => re.test(norm(tudo)));
+    return b ? { nome: b[1], id: b[2], codigo: b[3] } : { nome: 'Extrato', id: 'pdf', codigo: '' };
+  }
+
+  const MESES = { JAN: '01', FEV: '02', MAR: '03', ABR: '04', MAI: '05', JUN: '06', JUL: '07', AGO: '08', SET: '09', OUT: '10', NOV: '11', DEZ: '12' };
+  const diaAntes = d => new Date(Date.parse(`${d}T12:00:00Z`) - 864e5).toISOString().slice(0, 10);
+
+  /**
+   * Extrato do Nubank: a data vem como "01 ABR 2026" e abre o dia; "Total de entradas" / "Total de saídas"
+   * dizem o sinal dos lançamentos que vêm embaixo (os valores não têm sinal); "Saldo do dia" fecha o dia (PJ).
+   */
+  function lerNubank(linhas) {
+    let dentro = false;
+    let data = null;
+    let sinal = 0;
+    let atual = null;
+    const itens = [];
+    const saldos = {};
+    const fechar = () => {
+      if (atual) {
+        const tipo = atual.partes[0].join(' ');
+        const resto = atual.partes[1].join(' ');
+        const desc = limparNubank(resto ? `${tipo} - ${resto}` : tipo);
+        if (desc && atual.valor) itens.push({ data: atual.data, desc, valor: atual.valor, fitid: '', parcela: '', ordem: itens.length });
+      }
+      atual = null;
+    };
+    const RODAPE = /^(TEM ALGUMA DUVIDA|METROPOLITANAS|CASO A SOLUCAO|DISPONIVEIS EM|EXTRATO GERADO|O SALDO LIQUIDO|NAO NOS RESPONSAB|ASSEGURAMOS|NU FINANCEIRA|INVESTIMENTO|CNPJ|PAGAMENTO$)/;
+    for (const l of linhas) {
+      const n = norm(textoLinha(l));
+      if (!dentro) {
+        if (n === 'MOVIMENTACOES') dentro = true;
+        continue;
+      }
+      if (RODAPE.test(n)) continue;
+      const md = /^(\d{2}) (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ) (\d{4})\b/.exec(n);
+      let resto = l.itens;
+      if (md) {
+        fechar();
+        data = `${md[3]}-${MESES[md[2]]}-${md[1]}`;
+        resto = l.itens.filter(i => i.x >= 110);
+      }
+      const tn = norm(resto.map(i => i.s).join(' '));
+      if (/^TOTAL DE ENTRADAS/.test(tn)) { fechar(); sinal = 1; continue; }
+      if (/^TOTAL DE SAIDAS/.test(tn)) { fechar(); sinal = -1; continue; }
+      const dinheiro = resto.filter(i => i.x > 440 && lerValor(i.s) !== null);
+      const texto = resto.filter(i => !dinheiro.includes(i));
+      if (/^SALDO DO DIA/.test(tn) && dinheiro.length && data) {
+        fechar();
+        saldos[data] = lerValor(dinheiro[dinheiro.length - 1].s);
+        continue;
+      }
+      if (dinheiro.length && texto.length && data && sinal) {
+        fechar();
+        const v = Math.abs(lerValor(dinheiro[dinheiro.length - 1].s));
+        atual = { data, valor: Math.round(sinal * v * 100) / 100, partes: [[texto[0].s], texto.slice(1).map(i => i.s)], col2: texto[1] ? texto[1].x : texto[0].x + 140 };
+        continue;
+      }
+      // continuação da descrição (na coluna do nome), inclusive na página seguinte
+      if (!dinheiro.length && atual && texto.length && Math.abs(texto[0].x - atual.col2) < 15) atual.partes[1].push(...texto.map(i => i.s));
+    }
+    fechar();
+
+    // Resumo do período: saldo inicial (fim do dia anterior ao início) e final.
+    const MES_LONGO = { JANEIRO: '01', FEVEREIRO: '02', MARCO: '03', ABRIL: '04', MAIO: '05', JUNHO: '06', JULHO: '07', AGOSTO: '08', SETEMBRO: '09', OUTUBRO: '10', NOVEMBRO: '11', DEZEMBRO: '12' };
+    const textoN = linhas.slice(0, 20).map(l => norm(textoLinha(l)));
+    const per = textoN.map(t => /(\d{2}) DE ([A-Z]+) DE (\d{4}) A (\d{2}) DE ([A-Z]+) DE (\d{4})/.exec(t)).find(Boolean);
+    const valorDa = re => {
+      const num = l => l.itens.filter(i => lerValor(i.s.replace(/^\+/, '')) !== null).pop();
+      const l = linhas.slice(0, 20).find(x => re.test(norm(textoLinha(x))) && num(x));
+      return l ? lerValor(num(l).s.replace(/^\+/, '')) : null;
+    };
+    if (per && MES_LONGO[per[2]] && MES_LONGO[per[5]]) {
+      const ini = valorDa(/^SALDO INICIAL/);
+      const fim = valorDa(/^SALDO FINAL DO PERIODO/);
+      if (ini !== null) saldos[diaAntes(`${per[3]}-${MES_LONGO[per[2]]}-${per[1]}`)] = ini;
+      if (fim !== null) saldos[`${per[6]}-${MES_LONGO[per[5]]}-${per[4]}`] = fim;
+    }
+    return { itens, saldos, decrescente: false, rendimento: valorDa(/^RENDIMENTO LIQUIDO/) };
   }
 
   const iso = (d, m, y) => `${y}-${m}-${d}`;
@@ -121,18 +223,8 @@
    * Interpreta as linhas: { chaveConta, nomeConta, tipoConta, itens, saldos, saldoExtrato, saldoExtratoData, conferido }.
    * Ignora "Lançamentos futuros"/agendamentos e linhas de saldo (que viram conferência).
    */
-  function interpretar(linhas, nomeArquivo = '') {
-    const tudo = linhas.map(textoLinha).join('\n');
-    const banco = detectarBanco(tudo);
-    // "agência: 9630 conta: 0007334-5" (no Itaú a palavra agência fica numa linha e o número na outra)
-    const agcc = /\b(\d{4})(?:-\d)?\s*(?:\/|CONTA(?:\s+CORRENTE)?:?)\s*(\d[\d.]{3,}-?[\dXx]?)/i.exec(tudo);
-    const ag = agcc || /AG[EÊ]NCIA:?\s*(\d{3,5})/i.exec(tudo);
-    const cc = agcc ? [null, agcc[2]] : /CONTA(?:\s+CORRENTE)?:?\s*(\d[\d.]*-?[\dXx]?)/i.exec(tudo);
-    const emit = /EMITIDO EM:?\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(tudo);
-    const periodo = /(\d{2})\/(\d{2})\/(\d{4})\s*(?:at[eé]|a)\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(tudo);
-    const limite = emit ? iso(emit[1], emit[2], emit[3]) : periodo ? iso(periodo[4], periodo[5], periodo[6]) : null;
-    const anoRef = Number((limite || new Date().toISOString()).slice(0, 4));
-
+  /** Extrato em tabela (Itaú no PDF e na planilha, e o jeito mais comum dos bancos). */
+  function lerTabela(linhas, limite, anoRef) {
     const dataDe = s => {
       const m = RE_DATA.exec(s);
       if (!m || Number(m[1]) > 31 || Number(m[2]) > 12) return null;
@@ -232,7 +324,6 @@
     const decrescente = itens.length > 1 && itens[0].data > itens[itens.length - 1].data;
     const saldos = {};
     const doDia = new Set();
-    const diaAntes = d => new Date(Date.parse(`${d}T12:00:00Z`) - 864e5).toISOString().slice(0, 10);
     for (const s of saldosLinha) {
       if (s.dia) {
         // Linha de saldo que vem "antes" dos lançamentos do mesmo dia (abaixo deles num extrato do mais novo
@@ -244,6 +335,41 @@
       }
       if (doDia.has(s.data)) continue;
       if (!(s.data in saldos) || !decrescente) saldos[s.data] = s.valor;
+    }
+
+    return { itens, saldos, decrescente };
+  }
+
+  function interpretar(linhas, nomeArquivo = '') {
+    const tudo = linhas.map(textoLinha).join('\n');
+    const banco = detectarBanco(linhas);
+    // "agência: 9630 conta: 0007334-5" (no Itaú a palavra agência fica numa linha e o número na outra)
+    const agcc = /\b(\d{4})(?:-\d)?\s*(?:\/|CONTA(?:\s+CORRENTE)?:?)\s*(\d[\d.]{3,}-?[\dXx]?)/i.exec(tudo);
+    const ag = agcc || /AG[EÊ]NCIA:?\s*(\d{3,5})/i.exec(tudo);
+    const cc = agcc ? [null, agcc[2]] : /CONTA(?:\s+CORRENTE)?:?\s*(\d[\d.]*-?[\dXx]?)/i.exec(tudo);
+    const emit = /(?:EMITIDO EM|ATUALIZA[CÇ][AÃ]O):?\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(tudo);
+    const periodo = /(\d{2})\/(\d{2})\/(\d{4})\s*(?:at[eé]|a)\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(tudo);
+    const limite = emit ? iso(emit[1], emit[2], emit[3]) : periodo ? iso(periodo[4], periodo[5], periodo[6]) : null;
+    const anoRef = Number((limite || new Date().toISOString()).slice(0, 4));
+
+    // O Nubank não tem tabela com cabeçalho: tem leitor próprio.
+    const nubank = banco.id === 'nubank' && linhas.some(l => norm(textoLinha(l)) === 'MOVIMENTACOES');
+    const { itens, saldos, decrescente, rendimento } = nubank ? lerNubank(linhas) : lerTabela(linhas, limite, anoRef);
+
+    // O Nubank soma o rendimento da conta no saldo sem listar o lançamento (nem no PDF nem no CSV).
+    // Se o que falta entre os saldos for exatamente o "Rendimento líquido" do resumo, cria esses lançamentos.
+    if (rendimento > 0) {
+      const ds = Object.keys(saldos).sort();
+      const faltas = [];
+      for (let i = 1; i < ds.length; i++) {
+        const soma = itens.filter(t => t.data > ds[i - 1] && t.data <= ds[i]).reduce((x, t) => x + t.valor, 0);
+        const dif = Math.round((saldos[ds[i]] - saldos[ds[i - 1]] - soma) * 100) / 100;
+        if (dif > 0) faltas.push([ds[i], dif]);
+      }
+      const total = faltas.reduce((x, f) => x + f[1], 0);
+      if (faltas.length && Math.abs(total - rendimento) < 0.015) {
+        for (const [d, v] of faltas) itens.push({ data: d, desc: 'Rendimento da conta · Nubank', valor: v, fitid: '', parcela: '', ordem: itens.length });
+      }
     }
 
     // Conferência: saldo de um dia + lançamentos até o próximo saldo = próximo saldo.
@@ -268,6 +394,9 @@
     const ultima = datas[datas.length - 1] || null;
     return {
       banco: banco.nome,
+      codBanco: banco.codigo,
+      agencia: ag ? ag[1] : '',
+      numeroConta: numConta,
       chaveConta: `pdf:${banco.id}:${ag ? ag[1] : ''}:${numConta || nomeArquivo}:ck`,
       nomeConta: `${banco.nome}${numConta ? ` (${numConta})` : ''}`,
       tipoConta: 'corrente',
@@ -280,10 +409,52 @@
     };
   }
 
+  /* ---------------------------------------------------------------- planilhas (XLS/XLSX)
+     Lidas com o SheetJS (vendor/xlsx.full.min.js, carregado só quando precisa). Cada linha da planilha
+     vira uma "linha" como as do PDF, com as colunas lado a lado, e passa pelo mesmo leitor de tabela. */
+  let sheetjs = null;
+  function carregarSheetJS() {
+    if (g.XLSX) return Promise.resolve(g.XLSX);
+    if (!sheetjs) {
+      sheetjs = new Promise((ok, erro) => {
+        const s = document.createElement('script');
+        s.src = new URL('vendor/xlsx.full.min.js', document.baseURI).href;
+        s.onload = () => ok(g.XLSX);
+        s.onerror = () => { sheetjs = null; erro(new Error('não foi possível carregar o leitor de planilhas')); };
+        document.head.appendChild(s);
+      });
+    }
+    return sheetjs;
+  }
+
+  const fmtValor = n => (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtData = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+  async function lerLinhasPlanilha(file) {
+    const XLSX = await carregarSheetJS();
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellDates: true });
+    const aba = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(aba, { header: 1, raw: true, defval: '' });
+    return rows.map((r, i) => {
+      // número de agência/conta fica como está; os outros números viram "1.234,56"
+      const ident = /AG[EÊ]NCIA|CONTA/i.test(String(r[0] || ''));
+      const itens = [];
+      r.forEach((v, c) => {
+        let s = v instanceof Date ? fmtData(v)
+          : typeof v === 'number' ? (ident ? String(v) : fmtValor(v))
+          : String(v == null ? '' : v).trim();
+        if (s) itens.push({ x: c * 100, x2: c * 100 + 90, s });
+      });
+      return { pag: 1, y: i * 20, itens };
+    }).filter(l => l.itens.length);
+  }
+
+  const ehPlanilha = file => /\.(xlsx?|ods)$/i.test(file.name);
+
   async function ler(file, pedirSenha) {
-    const linhas = await lerLinhas(file, pedirSenha);
+    const linhas = ehPlanilha(file) ? await lerLinhasPlanilha(file) : await lerLinhas(file, pedirSenha);
     return interpretar(linhas, file.name);
   }
 
-  g.BolsoPDF = { ler, lerLinhas, interpretar, lerValor };
+  g.BolsoPDF = { ler, lerLinhas, lerLinhasPlanilha, interpretar, lerValor, limparNubank, ehPlanilha };
 })(window);

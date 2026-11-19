@@ -88,10 +88,10 @@
     <section class="view" data-view="importar" hidden>
       <div class="card">
         <h2>Importar extrato ou fatura</h2>
-        <p class="mut">Escolha um ou mais arquivos <b>OFX</b>, <b>CSV</b> ou <b>PDF</b> baixados do seu banco ou cartão. Lançamentos repetidos são ignorados sozinhos.</p>
+        <p class="mut">Escolha um ou mais arquivos <b>OFX</b>, <b>CSV</b>, <b>PDF</b> ou <b>planilha (XLS)</b> baixados do seu banco ou cartão. Pode misturar formatos da mesma conta: o que já estiver no app é ignorado. Lançamentos repetidos são ignorados sozinhos.</p>
         <label class="drop" id="drop">
           <span>Toque para escolher arquivos ou arraste para cá</span>
-          <input type="file" id="arquivo" multiple accept=".ofx,.csv,.txt,.pdf,text/csv,application/x-ofx,application/pdf">
+          <input type="file" id="arquivo" multiple accept=".ofx,.csv,.txt,.pdf,.xls,.xlsx,text/csv,application/x-ofx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
         </label>
         <div id="importRes"></div>
       </div>
@@ -128,7 +128,7 @@
           <dd>Conta: Extrato › Exportar › <b>OFX</b>. A fatura do cartão XP sai em <b>CSV</b> (Cartão › Fatura › Exportar).</dd>
           <dt>Bradesco, Santander, Caixa, Sicoob</dt>
           <dd>No site do banco pelo computador: Extrato (ou Fatura) › Exportar ou Salvar como › <b>OFX</b> (às vezes chamado de “Money”).</dd>
-          <dt>Itaú no celular (PDF)</dt>
+          <dt>Itaú (PDF no celular, XLS no computador) e Nubank (PDF ou CSV)</dt>
           <dd>No app: Extrato › escolha o período › compartilhar ou salvar › <b>Arquivo PDF</b>. O Bolso lê o PDF aqui no aparelho e confere a soma com o saldo de cada dia. Outros bancos em PDF também podem funcionar; se não der, use OFX ou CSV.</dd>
           <dt>CSV (Nubank, Inter, C6, Itaú, BTG…)</dt>
           <dd>Exporte o extrato ou fatura em <b>CSV</b>. O Bolso reconhece automaticamente os formatos dos principais bancos e permite conferir antes de salvar.</dd>

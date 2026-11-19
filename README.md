@@ -3,7 +3,7 @@
 Controle financeiro pessoal que roda inteiro no navegador. Pode ser instalado no celular e no computador (PWA) e funciona sem internet.
 
 - **Privado:** os dados ficam só no aparelho (IndexedDB). Não há servidor, login nem envio de dados.
-- **Importa extratos** OFX (SGML e XML), CSV e PDF (feito a partir do extrato do Itaú; o PDF é lido no próprio aparelho com o [pdf.js](https://mozilla.github.io/pdf.js/), licença Apache 2.0, em `vendor/`) de conta corrente e cartão de crédito, sem duplicar o que já foi importado.
+- **Importa extratos** OFX (SGML e XML), CSV, PDF e planilha XLS de conta corrente e cartão, sem duplicar o que já foi importado — nem quando a mesma conta chega em formatos diferentes (a conta é reconhecida pelo banco e número; o lançamento, pelo valor com até 4 dias de diferença na data). PDF testado com Itaú e Nubank (PF e PJ), XLS com Itaú. PDF e planilha são lidos no próprio aparelho com o [pdf.js](https://mozilla.github.io/pdf.js/) e o [SheetJS](https://sheetjs.com/) (licença Apache 2.0, em `vendor/`).
 - **Classifica sozinho** por regras "descrição contém texto → categoria" e aprende com as correções.
 - Pagamento de fatura, transferência entre as próprias contas e aplicação/resgate não contam como gasto nem como entrada.
 - Orçamento por categoria, comparação com o ritmo do mês, últimos 6 meses, cópia de segurança em JSON e exportação em CSV.

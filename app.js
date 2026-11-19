@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.1';
+  const VERSAO = '2.5.2';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -750,6 +750,39 @@
   }
 
   const RE_TRANSF = /PIX|TED|DOC|TEV|TRANSF|FATURA|PAGAMENTO|RESGATE|APLIC/;
+  const RE_ESTORNO = /ESTORN|DEVOLU|DEVOLVID|REEMBOLS|CANCELAMENTO|CHARGEBACK|REJEITAD|NAO EFETUAD/;
+  const PALAVRAS_ESTORNO = new Set('ESTORNO ESTORNADO DEVOLUCAO DEVOLVIDO DEVOLVIDA REEMBOLSO CANCELAMENTO CHARGEBACK REJEITADO NAO EFETUADO ERRO ENVIO'.split(' '));
+
+  /**
+   * Liga cada estorno à compra que ele desfaz: mesmo valor, mesma conta, antes do estorno e
+   * (a) com alguma palavra do nome em comum, até 60 dias antes; ou (b) sem nome, até 3 dias antes
+   * ("Pix não efetuado" logo depois do Pix). Fica a mais perto na data. Só valor inteiro: estorno
+   * parcial fica para ela abater à mão. Nunca mexe no que ela classificou. Devolve os alterados.
+   */
+  function estornosAbatidos() {
+    const mudados = [];
+    const dia = tx => Date.parse(`${tx.data}T12:00:00Z`) / 86400000;
+    const nome = tx => new Set(BolsoIA.tokens(tx.desc).filter(w => !PALAVRAS_ESTORNO.has(w)));
+    const estornos = state.lancamentos.filter(e => e.valor > 0 && e.catOrigem !== 'usuario' && !(e.usadoAbate > 0)
+      && RE_ESTORNO.test(norm(e.desc)));
+    for (const e of estornos.sort((a, b) => a.data.localeCompare(b.data))) {
+      const nomeE = nome(e);
+      const alvo = state.lancamentos
+        .filter(g => g.valor < 0 && g.contaId === e.contaId && Math.abs(g.valor + e.valor) <= 0.01
+          && !(g.abatido > 0) && dia(g) <= dia(e))
+        .filter(g => {
+          const dias = dia(e) - dia(g);
+          const comum = [...nome(g)].some(w => nomeE.has(w));
+          return comum ? dias <= 60 : dias <= 3;
+        })
+        .sort((a, b) => dia(b) - dia(a))[0];
+      if (!alvo) continue;
+      alvo.abatido = round2(Math.abs(alvo.valor));
+      Object.assign(e, { usadoAbate: round2(e.valor), estornoDe: alvo.id, catId: 'transf', subId: '', catOrigem: 'auto' });
+      mudados.push(alvo, e);
+    }
+    return mudados;
+  }
 
   /**
    * Marca como "Transferência / Fatura" a saída de uma conta que entra em outra (mesmo valor, até 3 dias)
@@ -767,6 +800,10 @@
       if (fatura) tx.ehFatura = true;
       mudados.add(tx);
     };
+
+    // 0. Estorno, devolução ou Pix rejeitado abate a compra de mesmo valor na mesma conta (como o "Abater"
+    //    feito à mão): a compra que voltou não conta como gasto, nem o dinheiro de volta como entrada.
+    for (const tx of estornosAbatidos()) mudados.add(tx);
 
     // 1. Saída numa conta com entrada de mesmo valor em outra
     const entradas = state.lancamentos.filter(b => b.valor > 0 && livre(b));

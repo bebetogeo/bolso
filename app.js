@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.6';
+  const VERSAO = '2.5.7';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -711,6 +711,7 @@
     return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
   };
   const vespera = ym => fimDoMes(addMes(ym, -1));
+  const somaDias = (data, n) => new Date(Date.parse(`${data}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
   /** Dia do mês sem passar do último (parcela de 31/01 cai em 28/02, não em "31/02"). */
   const diaNoMes = (ym, dia) => `${ym}-${String(Math.min(Number(dia) || 1, Number(fimDoMes(ym).slice(8, 10)))).padStart(2, '0')}`;
 
@@ -800,7 +801,7 @@
       if (!e.estornoDe) continue;
       const alvo = porId.get(e.estornoDe);
       const mudouCategoria = e.catOrigem === 'usuario' && e.catId !== 'transf';
-      if (alvo && !mudouCategoria) continue;
+      if (alvo && !mudouCategoria && !ehMov(alvo)) continue;
       if (alvo) {
         alvo.abatido = round2(Math.max(0, (Number(alvo.abatido) || 0) - (Number(e.usadoAbate) || 0)));
         delete alvo.estornoPor;
@@ -808,6 +809,8 @@
       }
       e.usadoAbate = 0;
       delete e.estornoDe;
+      // sem a compra (ou ligado a transferência), o estorno não pode ficar como "Transferência" sem par
+      if (!mudouCategoria && e.catOrigem === 'auto') Object.assign(e, { catId: '', subId: '', catOrigem: '' });
       mudados.push(e);
     }
     for (const g of state.lancamentos) {
@@ -833,7 +836,7 @@
     const mudados = [];
     const dia = tx => Date.parse(`${tx.data}T12:00:00Z`) / 86400000;
     const nome = nomeDoLancamento;
-    const estornos = state.lancamentos.filter(e => e.valor > 0 && e.catOrigem !== 'usuario' && !(e.usadoAbate > 0)
+    const estornos = state.lancamentos.filter(e => e.valor > 0 && e.catOrigem !== 'usuario' && e.catOrigem !== 'antigo' && !(e.usadoAbate > 0)
       && RE_ESTORNO.test(norm(e.desc)));
     for (const e of estornos.sort((a, b) => a.data.localeCompare(b.data))) {
       const nomeE = nome(e);
@@ -864,7 +867,8 @@
    */
   function conciliarTransferencias() {
     if (!getCat('transf')) return [];
-    const livre = tx => tx.catOrigem !== 'usuario' && RE_TRANSF.test(norm(tx.desc));
+    const livre = tx => tx.catOrigem !== 'usuario' && tx.catOrigem !== 'antigo' && !tx.estornoDe && !tx.estornoPor
+      && RE_TRANSF.test(norm(tx.desc));
     const dia = tx => Date.parse(`${tx.data}T12:00:00Z`) / 86400000;
     const mudados = new Set();
     const marcar = (tx, fatura = false) => {
@@ -895,8 +899,24 @@
     const mesmoNome = (a, b) => {
       const na = nomes(a);
       const nb = nomes(b);
-      return !na.length || !nb.length || na.some(w => nb.includes(w));
+      const porRegra = [a, b].some(tx => tx.catOrigem === 'regra' && tx.catId === 'transf');
+      if (!na.length || !nb.length) return !porRegra;
+      return na.some(w => nb.includes(w));
     };
+    // Pares que versões antigas fizeram só pelo valor e pela data (sem nome em comum): ao abrir, o par
+    // automático que não tem mais um par válido volta a ficar sem categoria (as regras e o par certo o refazem).
+    // Não mexe em fatura, cartão, estorno nem no que ela classificou.
+    const autoPar = state.lancamentos.filter(tx => tx.catOrigem === 'auto' && tx.catId === 'transf' && !tx.ehFatura
+      && !tx.estornoDe && !tx.estornoPor && !(tx.usadoAbate > 0) && !ehCartao(tx.contaId));
+    for (const a of autoPar) {
+      const temPar = autoPar.some(b => b !== a && b.contaId !== a.contaId && Math.abs(b.valor + a.valor) <= 0.02
+        && Math.abs(dia(b) - dia(a)) <= 3 && mesmoNome(a, b));
+      if (!temPar) {
+        Object.assign(a, { catId: '', subId: '', catOrigem: '' });
+        mudados.add(a);
+      }
+    }
+
     const entradas = state.lancamentos.filter(b => b.valor > 0 && livreTransf(b));
     const usadas = new Set();
     for (const a of state.lancamentos) {
@@ -1396,7 +1416,7 @@
     }
     return {
       // último dia com extrato nas contas: se ficou para trás, a previsão conta como futuro o que já passou
-      ultimoExtrato: state.lancamentos.filter(tx => ids.has(tx.contaId) && tx.data <= hoje).reduce((m, tx) => (tx.data > m ? tx.data : m), ''),
+      ultimoExtrato: state.lancamentos.filter(tx => ids.has(tx.contaId) && (tx.fitid || tx.hashImport) && tx.data <= hoje).reduce((m, tx) => (tx.data > m ? tx.data : m), ''),
       fim, saldoHoje, previsto, comEntradas, entra, sai, fatura, diaADia, diasRest, meses: hist.length,
       desde: diaHoje + 1, fixas: contam, ocultas: fixas.filter(f => ocultas.has(f.chave)), faturas, menor
     };
@@ -1967,7 +1987,9 @@
       for (const k of chaves) if (daConta.has(k)) n++;
       if (n > max) { max = n; melhor = c; }
     }
-    return max >= 3 && max >= chaves.size * 0.3 ? melhor : null;
+    // Sem sinal, só com quase tudo igual (fatura com compras positivas); contas que só trocam Pix entre si
+    // coincidem num pedaço (o CSV do Nubank PJ batia 35% com o Itaú do mesmo dono).
+    return max >= 3 && max >= chaves.size * (comSinal === 'abs' ? 0.6 : 0.3) ? melhor : null;
   }
 
   function abrirMapeamentoCSV(fileName, parsed) {
@@ -2125,7 +2147,7 @@
       || contaComMesmosLancamentos(lido.itens || [], c => {
         const { banco, numero } = bancoENumero(c);
         return tipoBate(c) && !(banco && numero);
-      }, true);
+      });
     if (!conta) {
       conta = {
         id: uid('ct'),
@@ -2206,7 +2228,7 @@
       lista.forEach((tx, i) => {
         const d = dias(tx.data, it.data);
         const f = faixa[fonteDe(tx)];
-        if (d > 4 || !f || it.data < f.ini || it.data > f.fim) return;
+        if (d > 4 || !f || it.data < somaDias(f.ini, -2) || it.data > somaDias(f.fim, 2)) return;
         const n = d + (mesmoNome(tx.desc, it.desc) ? 0 : 2.5);
         if (n < nota) { nota = n; melhor = i; }
       });
@@ -3160,9 +3182,12 @@
       state.fixasOcultas = data.fixasOcultas || [];
       state.lancamentos = data.lancamentos;
 
-      // Cópia de versão antiga: mesma migração de quando o app atualiza (descrições, origem das categorias)
-      await kvSet('migracao', 0);
-      await migrar();
+      // Cópia de versão antiga (categorias sem origem): mesma migração de quando o app atualiza.
+      // Cópia recente não passa por ela (reescreveria descrições que ela pode ter editado).
+      if (state.lancamentos.some(tx => tx.catId && !tx.catOrigem)) {
+        await kvSet('migracao', 0);
+        await migrar();
+      }
       conciliarTransferencias();
       for (const c of state.contas) {
         recalcularSaldoInicialPorExtrato(c);

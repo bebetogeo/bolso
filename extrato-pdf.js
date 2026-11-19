@@ -30,7 +30,10 @@
     let desistiu;
     const cancelado = new Promise((_, rejeitar) => { desistiu = rejeitar; });
     tarefa.onPassword = async (atualizar, motivo) => {
-      const senha = pedirSenha ? await pedirSenha(motivo === lib.PasswordResponses.INCORRECT_PASSWORD) : null;
+      let senha = null;
+      try {
+        senha = pedirSenha ? await pedirSenha(motivo === lib.PasswordResponses.INCORRECT_PASSWORD) : null;
+      } catch (e) { senha = null; }
       if (senha == null || senha === '') {
         const err = new Error('PDF com senha não aberto');
         err.name = 'PasswordException';

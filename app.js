@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.5';
+  const VERSAO = '2.5.6';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -711,6 +711,8 @@
     return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
   };
   const vespera = ym => fimDoMes(addMes(ym, -1));
+  /** Dia do mês sem passar do último (parcela de 31/01 cai em 28/02, não em "31/02"). */
+  const diaNoMes = (ym, dia) => `${ym}-${String(Math.min(Number(dia) || 1, Number(fimDoMes(ym).slice(8, 10)))).padStart(2, '0')}`;
 
   /** Saldo informado pelo banco (OFX) dentro do mês: o mais recente. */
   function saldoExtratoNoMes(conta, ym) {
@@ -765,7 +767,7 @@
       const dia = (tx.data || '2026-01-10').slice(8, 10);
       futuros.push({
         id: `proj_${tx.id}_${parcAlvo}`,
-        data: `${ym}-${dia}`,
+        data: diaNoMes(ym, dia),
         desc: tx.desc,
         valor: Math.abs(tx.valor),
         catId: tx.catId,
@@ -2272,6 +2274,7 @@
     treinarIA();
 
     if (novos.length) state.mes = novos.map(x => x.data).sort().pop().slice(0, 7);
+    pedirArmazenamentoPersistente();
 
     return {
       novos: novos.length,
@@ -2354,6 +2357,26 @@
     render();
   }
 
+  /**
+   * Senha do PDF na janela do próprio app (window.prompt pode não aparecer no app instalado no iPhone).
+   * Devolve a senha digitada ou null se ela cancelar. A senha só é usada para abrir o arquivo aqui.
+   */
+  function pedirSenhaPDF(nomeArquivo, errou) {
+    return new Promise(resolve => {
+      let respondeu = false;
+      abrirModal({
+        titulo: 'PDF com senha',
+        desc: errou ? 'Senha incorreta. Tente de novo.' : `${nomeArquivo} tem senha (alguns bancos usam parte do CPF).`,
+        html: '<label>Senha do PDF<input type="password" id="pdfSenha" autocomplete="off" autocapitalize="off" spellcheck="false"></label>',
+        okTexto: 'Abrir',
+        onOk: () => { respondeu = true; resolve($('#pdfSenha').value); },
+        onCancel: () => { respondeu = true; resolve(null); },
+        onOpen: () => $('#pdfSenha').focus()
+      });
+      $('#dlg').addEventListener('close', () => { if (!respondeu) resolve(null); }, { once: true });
+    });
+  }
+
   /** Extrato em PDF ou planilha (XLS): lido aqui mesmo (extrato-pdf.js), sem mandar o arquivo para lugar nenhum. */
   async function importarPDF(file) {
     const nome = file.name;
@@ -2361,9 +2384,7 @@
     adicionarResultadoImport(nome, null, '', planilha ? 'Lendo a planilha…' : 'Lendo o PDF…');
     let lido;
     try {
-      lido = await BolsoPDF.ler(file, errou => window.prompt(errou
-        ? 'Senha incorreta. Digite a senha do PDF de novo:'
-        : 'Este PDF tem senha (alguns bancos usam parte do CPF). Digite a senha:'));
+      lido = await BolsoPDF.ler(file, errou => pedirSenhaPDF(nome, errou));
     } catch (err) {
       const senha = err && /Password/i.test(err.name || '');
       adicionarResultadoImport(nome, null, senha ? 'O PDF tem senha e não foi aberto.' : `Não foi possível abrir o arquivo: ${err.message || err}`);
@@ -2581,7 +2602,7 @@
   /* ========================================================================
      Modais (Lançamento, Rateio/Abate, Conta, Categoria)
      ======================================================================== */
-  function abrirModal({ titulo, desc = '', html, okTexto = 'Salvar', extraTexto = '', onExtra = null, onOk, onOpen = null }) {
+  function abrirModal({ titulo, desc = '', html, okTexto = 'Salvar', extraTexto = '', onExtra = null, onOk, onOpen = null, onCancel = null }) {
     const dlg = $('#dlg');
     $('#dlgTitulo').textContent = titulo;
     $('#dlgDesc').textContent = desc;
@@ -2602,7 +2623,9 @@
       btnExtra.onclick = null;
     }
 
-    $('#dlgCancel').onclick = () => dlg.close();
+    // Cancelar (botão ou Esc) avisa direto: não dá para contar com o evento "close" em todo navegador.
+    $('#dlgCancel').onclick = () => { if (onCancel) onCancel(); dlg.close(); };
+    dlg.oncancel = () => { if (onCancel) onCancel(); };
     $('#dlgForm').onsubmit = async e => {
       e.preventDefault();
       const ok = await onOk();
@@ -2789,7 +2812,7 @@
           const nParc = Number($('#dlParc')?.value || 1);
           const criados = [];
           for (let p = 1; p <= nParc; p++) {
-            const dtP = p === 1 ? data : `${addMes(data.slice(0, 7), p - 1)}-${data.slice(8, 10)}`;
+            const dtP = p === 1 ? data : diaNoMes(addMes(data.slice(0, 7), p - 1), data.slice(8, 10));
             criados.push({
               id: uid('tx'),
               contaId,
@@ -3112,6 +3135,23 @@
         toast('Arquivo de cópia inválido');
         return;
       }
+      // Restaurar troca tudo o que está no app: confirma antes (escolher o arquivo errado apagaria os dados)
+      const atuais = state.exemplo ? 0 : state.lancamentos.length;
+      if (atuais) {
+        const confirmou = await new Promise(resolve => {
+          let respondeu = false;
+          abrirModal({
+            titulo: 'Restaurar cópia?',
+            desc: `Os ${atuais} lançamentos que estão no app agora serão trocados pelos ${data.lancamentos.length} da cópia "${file.name}". Isso não pode ser desfeito.`,
+            html: '',
+            okTexto: 'Restaurar',
+            onOk: () => { respondeu = true; resolve(true); },
+            onCancel: () => { respondeu = true; resolve(false); }
+          });
+          $('#dlg').addEventListener('close', () => { if (!respondeu) resolve(false); }, { once: true });
+        });
+        if (!confirmou) return;
+      }
       state.exemplo = false;
       state.contas = data.contas || [];
       state.categorias = data.categorias;
@@ -3120,6 +3160,9 @@
       state.fixasOcultas = data.fixasOcultas || [];
       state.lancamentos = data.lancamentos;
 
+      // Cópia de versão antiga: mesma migração de quando o app atualiza (descrições, origem das categorias)
+      await kvSet('migracao', 0);
+      await migrar();
       conciliarTransferencias();
       for (const c of state.contas) {
         recalcularSaldoInicialPorExtrato(c);
@@ -3462,9 +3505,22 @@
     };
   }
 
+  /**
+   * Pede ao navegador para não apagar os dados do app sozinho (ele pode limpar sites para liberar espaço,
+   * e o iPhone apaga dados de sites sem uso há dias). Só depois que há lançamentos, para não perguntar à toa.
+   */
+  async function pedirArmazenamentoPersistente() {
+    try {
+      if (state.exemplo || !state.lancamentos.length || !navigator.storage || !navigator.storage.persist) return;
+      if (await navigator.storage.persisted()) return;
+      await navigator.storage.persist();
+    } catch (e) { /* sem suporte: segue com o aviso de cópia de segurança */ }
+  }
+
   async function init() {
     state.db = await abrirDB();
     await carregarDadosReais();
+    pedirArmazenamentoPersistente();
     bindEventos();
     configurarPWA();
     irPara('painel');

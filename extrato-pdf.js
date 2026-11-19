@@ -26,11 +26,21 @@
   async function lerLinhas(file, pedirSenha) {
     const lib = await carregarPdfjs();
     const tarefa = lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false });
-    tarefa.onPassword = (atualizar, motivo) => {
-      const senha = pedirSenha ? pedirSenha(motivo === lib.PasswordResponses.INCORRECT_PASSWORD) : null;
-      if (senha == null) tarefa.destroy(); else atualizar(senha);
+    // Sem senha (cancelou): o pdf.js não encerra a leitura sozinho, então ela termina aqui com o erro de senha.
+    let desistiu;
+    const cancelado = new Promise((_, rejeitar) => { desistiu = rejeitar; });
+    tarefa.onPassword = async (atualizar, motivo) => {
+      const senha = pedirSenha ? await pedirSenha(motivo === lib.PasswordResponses.INCORRECT_PASSWORD) : null;
+      if (senha == null || senha === '') {
+        const err = new Error('PDF com senha não aberto');
+        err.name = 'PasswordException';
+        desistiu(err);
+        tarefa.destroy();
+      } else {
+        atualizar(senha);
+      }
     };
-    const doc = await tarefa.promise;
+    const doc = await Promise.race([tarefa.promise, cancelado]);
     const linhas = [];
     try {
       for (let p = 1; p <= doc.numPages; p++) {

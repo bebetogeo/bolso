@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.6.3';
+  const VERSAO = '2.7.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -18,7 +18,10 @@
     'transporte:app': 'UBER|99APP|99 POP|99POP|99 RIDE|99 TAXI|99TAXI|99 APP|CABIFY|INDRIVE|TAXI=|TAXIS=',
     'transporte:combustivel': 'IPIRANGA|SHELL|POSTO=|POSTOS=|AUTO POSTO|AUTOPOSTO|PETROBRAS|COMBUST|RAIZEN|ALE COMBUSTIVEIS|ABASTEC|GNV=',
     'transporte:pedagio': 'SEM PARAR|SEMPARAR|VELOE|CONECTCAR|MOVE MAIS|TAGGY|ESTACIONAMENTO|ESTACIONAM|ESTAPAR|PARKING|ROTATIVO|ZUL DIGITAL|INDIGO ESTAC|MULTIPARK|PEDAGIO|ARTERIS|ECOVIAS|AUTOBAN|NOVADUTRA',
-    'transporte:manutencao': 'OFICINA|BORRACHARIA|AUTO PECAS|AUTOPECAS|LAVA JATO|LAVAJATO|LAVA RAPIDO|PNEUS=|PNEU=|MECANICA|AUTO CENTER|AUTOCENTER|FUNILARIA|DPASCHOAL|AUTOZONE|SEGURO AUTO|PORTO SEGURO AUTO|YOUSE',
+    'transporte:manutencao': 'OFICINA|BORRACHARIA|AUTO PECAS|AUTOPECAS|LAVA JATO|LAVAJATO|LAVA RAPIDO|PNEUS=|PNEU=|MECANICA|AUTO CENTER|AUTOCENTER|FUNILARIA|DPASCHOAL|AUTOZONE',
+    'seguros:carro': 'SEGURO AUTO|PORTO SEGURO AUTO|YOUSE|AZUL SEGURO|AZUL SEGUROS|SEGURO VEICULO|TOKIO MARINE AUTO|HDI SEGUROS|ALLIANZ AUTO',
+    'seguros:vida': 'SEGURO DE VIDA|SEGURO VIDA|PRUDENTIAL|METLIFE|MONGERAL|ICATU SEGUROS|MAPFRE VIDA|AZOS=',
+    'seguros:residencial': 'SEGURO RESIDENCIAL|SEGURO RESID|SEGURO CASA|SEGURO FIANCA|SEGURO INCENDIO',
     'transporte': 'BILHETE UNICO|SPTRANS|BHBUS|OTIMO=|CPTM|METRO SP|METROSP|METRO RIO|METRORIO|SUPERVIA|RIOCARD|JAE=|TOP TRANSPORTE|TRANSFACIL|CBTU|ONIBUS|RECARGA TRANSPORTE|LOCALIZA|MOVIDA|UNIDAS|RENT A CAR',
     'alimentacao:delivery': 'IFOOD|IFD=|RAPPI|ZE DELIVERY|AIQFOME|UBER EATS|JAMES DELIVERY|DELIVERY MUCH|ANOTA AI|ANOTAAI|DELIVERY',
     'alimentacao:mercado': 'SUPERMERC|HIPERMERC|MERCADO=|MERCEARIA|MERCADINHO|MINIMERC|MINI MERC|SACOLAO|HORTIFRUTI|HORTI FRUTI|QUITANDA|VAREJAO|FEIRA=|FEIRAS=|ATACADAO|ATACADIS|ATACAREJO|ASSAI|CARREFOUR|PAO DE ACUCAR|MAKRO|SAMS CLUB|BIG BOMPRECO|BOMPRECO|ZONA SUL|PREZUNIC|SONDA=|ST MARCHE|ZAFFARI|ANGELONI|GIASSI|CONDOR=|BISTEK|COMPER=|SAVEGNAGO|NAGUMO|ROLDAO|TENDA ATACADO|FORT ATACAD|GBARBOSA|DAVO=|VERDEMAR|SUPER NOSSO|EPA=|MART MINAS|BAHAMAS|VILLEFORT|BH SUPER|DAKI=|OXXO|AMPM|MINI EXTRA|MERCANTIL ATACADO|MIX MATEUS|SUPERMARKET=|COVABRA|SAM S CLUB|MUNDO VERDE|BIO MUNDO|SWIFT=|CONVENIENCIA|DMA DISTRIBUIDORA|CARNE=|CARNES=|ACOUGUE|CASA DE CARNE|FRIGORIF|PEIXARIA|LATICINIO|GRANEL|EMPORIO|PANIFICADORA',
@@ -135,6 +138,14 @@
     { id: 'pets', nome: 'Pets', tipo: 'gasto', cor: '#b08a4f', subs: [] },
     { id: 'tarifas', nome: 'Tarifas & impostos', tipo: 'gasto', cor: '#9a6b4f', subs: [] },
     { id: 'pix', nome: 'Pix e transferências', tipo: 'gasto', cor: '#6d8a96', subs: [] },
+    {
+      id: 'seguros', nome: 'Seguros', tipo: 'gasto', cor: '#6b7fa8',
+      subs: [
+        { id: 'vida', nome: 'Vida' },
+        { id: 'residencial', nome: 'Residencial' },
+        { id: 'carro', nome: 'Carro' }
+      ]
+    },
     { id: 'outros', nome: 'Outros gastos', tipo: 'gasto', cor: '#8b9999', subs: [] },
     { id: 'salario', nome: 'Salário & Receitas', tipo: 'receita', cor: '#1e824c', subs: [] },
     { id: 'rendimentos', nome: 'Rendimentos & Extras', tipo: 'receita', cor: '#3ca370', subs: [] },
@@ -390,6 +401,7 @@
     state.lancamentos = lancs || [];
     await migrar();
     await garantirPensao();
+    await garantirSeguros();
     treinarIA();
 
     const mudados = new Set(conciliarTransferencias());
@@ -467,6 +479,18 @@
     await kvSet('contas', state.contas);
     await dbPutLanc(state.lancamentos);
     await kvSet('migracao', MIGRACAO);
+  }
+
+  /** Categoria "Seguros" (2.7.0): entra uma vez, antes de "Outros gastos"; se ela apagar, não volta. */
+  async function garantirSeguros() {
+    if (state.exemplo || (await kvGet('cat-seguros', false))) return;
+    if (!getCat('seguros') && !state.categorias.some(c => /^SEGUROS?$/.test(norm(c.nome)))) {
+      const c = JSON.parse(JSON.stringify(CATS_PADRAO.find(x => x.id === 'seguros')));
+      const iOut = state.categorias.findIndex(x => x.id === 'outros');
+      state.categorias.splice(iOut >= 0 ? iOut : state.categorias.length, 0, c);
+      await kvSet('categorias', state.categorias);
+    }
+    await kvSet('cat-seguros', true);
   }
 
   /** Categoria de entrada "Pensão" (2.6.2): entra uma vez em quem já usa o app; se ela apagar, não volta. */
@@ -596,10 +620,10 @@
       if (!r.catId) { intermediario = true; continue; }
       // depois de um intermediário ("RENDIMENTOS MERCADO PAGO"), só o que não depende da loja
       if (intermediario && !['transf', 'rendimentos', 'salario'].includes(r.catId)) continue;
-      const c = getCat(r.catId);
+      const rc = resolverCat(r.catId, r.subId || '');
+      const c = rc && getCat(rc.catId);
       if (!c || !tipoCombina(c, valor)) continue;
-      const subOk = r.subId && (c.subs || []).some(x => x.id === r.subId) ? r.subId : '';
-      return { catId: r.catId, subId: subOk, origem: 'regra' };
+      return { catId: rc.catId, subId: rc.subId, origem: 'regra' };
     }
     return null;
   }
@@ -619,6 +643,23 @@
     if (!p) return classificarPorRegra(desc, valor);
     const [catId, subId = ''] = p.key.split(':');
     return { catId, subId, origem: 'ia' };
+  }
+
+  /**
+   * Onde está hoje uma categoria/subcategoria das regras embutidas, depois que ela mexeu na árvore:
+   * subcategoria movida para outra categoria, que virou categoria, ou categoria que virou subcategoria.
+   */
+  function resolverCat(catId, subId = '') {
+    const c = getCat(catId);
+    if (c && (!subId || (c.subs || []).some(s => s.id === subId))) return { catId, subId };
+    if (subId) {
+      const dono = state.categorias.find(x => (x.subs || []).some(s => s.id === subId));
+      if (dono) return { catId: dono.id, subId };
+      if (getCat(subId)) return { catId: subId, subId: '' };
+      if (c) return { catId, subId: '' };
+    }
+    const donoCat = state.categorias.find(x => (x.subs || []).some(s => s.id === catId));
+    return donoCat ? { catId: donoCat.id, subId: catId } : null;
   }
 
   function getCat(catId) {
@@ -2792,28 +2833,7 @@
       li.onclick = () => { const p = getPessoa(li.dataset.pesEdit); if (p) abrirModalPessoa(p); };
     });
 
-    const ulCats = $('#cats-lista');
-    const coresAj = coresCategorias(mesesDoPainel());
-    ulCats.innerHTML = state.categorias.map(c => {
-      const subsTxt = (c.subs && c.subs.length)
-        ? c.subs.map(s => s.nome).join(', ')
-        : 'Sem subcategorias';
-      return `
-        <li data-cat-edit="${esc(c.id)}">
-          <div>
-            <b><i class="bol" style="background:${corCategoria(coresAj, c.id)}"></i>${esc(c.nome)}</b>
-            <small>${esc(subsTxt)}</small>
-          </div>
-          <span class="seta">›</span>
-        </li>
-      `;
-    }).join('');
-    $$('li[data-cat-edit]', ulCats).forEach(li => {
-      li.onclick = () => {
-        const c = getCat(li.dataset.catEdit);
-        if (c) abrirModalCategoria(c);
-      };
-    });
+    renderArvoreCategorias();
 
     const ultBk = Number(localStorage.getItem('bolso-ultimo-backup') || 0);
     $('#bkInfo').textContent = ultBk
@@ -3464,6 +3484,208 @@
         toast('Conta atualizada');
         render();
       }
+    });
+  }
+
+  /* ---------- Categorias em árvore (Ajustes): renomear, cor, subcategorias, mover e excluir ---------- */
+  // Categorias de que o app depende (transferências, Pix, rendimentos...): não viram subcategoria.
+  const CATS_FIXAS = ['transf', 'pix', 'rendimentos', 'salario', 'outros'];
+  const arv = { sel: '', modo: '' };
+
+  function renderArvoreCategorias() {
+    const el = $('#cats-arvore');
+    if (!el) return;
+    const cores = coresCategorias(mesesDoPainel());
+    const nCat = {}, nSub = {};
+    for (const tx of state.lancamentos) {
+      if (!tx.catId) continue;
+      nCat[tx.catId] = (nCat[tx.catId] || 0) + 1;
+      if (tx.subId) nSub[`${tx.catId}:${tx.subId}`] = (nSub[`${tx.catId}:${tx.subId}`] || 0) + 1;
+    }
+    const chave = (c, s) => s ? `${c.id}:${s.id}` : c.id;
+    const acoes = (c, s) => {
+      const k = chave(c, s);
+      if (arv.sel !== k) return '';
+      const fixa = !s && CATS_FIXAS.includes(c.id);
+      let h = `<div class="arv-acoes">
+        <button type="button" class="btn sm" data-arv="ren">Renomear</button>
+        ${s ? '' : `<label class="btn sm arv-cor">Cor<input type="color" data-arv-cor value="${esc(c.cor || '#0f5257')}"></label>`}
+        ${s ? '' : '<button type="button" class="btn sm" data-arv="sub">+ Subcategoria</button>'}
+        ${fixa ? '' : '<button type="button" class="btn sm" data-arv="mv">Mover para</button>'}
+        ${s || fixa ? '' : '<button type="button" class="btn sm" data-arv="tipo">Tipo</button>'}
+        ${fixa ? '' : '<button type="button" class="btn sm arv-del" data-arv="del">Excluir</button>'}
+      </div>`;
+      if (arv.modo === 'ren' || arv.modo === 'sub') {
+        h += `<div class="arv-form"><input id="arvNome" maxlength="40" value="${arv.modo === 'ren' ? esc((s || c).nome) : ''}" placeholder="${arv.modo === 'sub' ? 'Nome da subcategoria' : ''}">
+          <button type="button" class="btn sm" data-arv="${arv.modo === 'ren' ? 'okRen' : 'okSub'}">${arv.modo === 'ren' ? 'Salvar' : 'Criar'}</button></div>`;
+      }
+      if (arv.modo === 'mv') {
+        const op = [];
+        if (s) {
+          op.push(`<option value="__cat">Virar categoria</option>`);
+          for (const x of state.categorias) if (x !== c && x.tipo === c.tipo) op.push(`<option value="${esc(x.id)}">${esc(x.nome)}</option>`);
+        } else if (!(c.subs || []).length) {
+          for (const x of state.categorias) if (x !== c && x.tipo === c.tipo) op.push(`<option value="${esc(x.id)}">Virar subcategoria de ${esc(x.nome)}</option>`);
+        }
+        const n = s ? (nSub[k] || 0) : (nCat[c.id] || 0);
+        h += op.length
+          ? `<div class="arv-form"><select id="arvDest">${op.join('')}</select>
+              <button type="button" class="btn sm" data-arv="okMv">Mover${n ? ` ${n} ${n === 1 ? 'lançamento' : 'lançamentos'}` : ''}</button></div>`
+          : `<p class="mut arv-aviso">Para virar subcategoria, mova antes as subcategorias dela.</p>`;
+      }
+      return h;
+    };
+    const grupos = [['gasto', 'Gastos'], ['receita', 'Entradas'], ['mov', 'Não conta (transferências e fatura)']];
+    el.innerHTML = grupos.map(([tipo, rot]) => {
+      const cats = state.categorias.filter(c => c.tipo === tipo);
+      if (!cats.length) return '';
+      return `<div class="arv-ramo">${rot}</div>` + cats.map(c => `
+        <div class="arv-cat">
+          <button type="button" class="arv-no ${arv.sel === c.id ? 'sel' : ''}" data-arv-no="${esc(c.id)}">
+            <i class="bol" style="background:${corCategoria(cores, c.id)}"></i><span>${esc(c.nome)}</span><small>${nCat[c.id] || ''}</small>
+          </button>
+          ${acoes(c, null)}
+          ${(c.subs || []).length ? `<div class="arv-subs">${c.subs.map(s => `
+            <div class="arv-sub">
+              <button type="button" class="arv-no ${arv.sel === `${c.id}:${s.id}` ? 'sel' : ''}" data-arv-no="${esc(c.id)}:${esc(s.id)}">
+                <span>${esc(s.nome)}</span><small>${nSub[`${c.id}:${s.id}`] || ''}</small>
+              </button>
+              ${acoes(c, s)}
+            </div>`).join('')}</div>` : ''}
+        </div>`).join('');
+    }).join('');
+
+    $$('[data-arv-no]', el).forEach(b => {
+      b.onclick = () => { arv.sel = arv.sel === b.dataset.arvNo ? '' : b.dataset.arvNo; arv.modo = ''; renderArvoreCategorias(); };
+    });
+    const [cid, sid] = arv.sel.split(':');
+    const c = getCat(cid);
+    const s = c && sid ? (c.subs || []).find(x => x.id === sid) : null;
+    if (!c) return;
+    const cor = $('[data-arv-cor]', el);
+    if (cor) cor.onchange = async () => { c.cor = cor.value; await kvSet('categorias', state.categorias); render(); };
+    $$('[data-arv]', el).forEach(b => {
+      b.onclick = async () => {
+        const a = b.dataset.arv;
+        if (['ren', 'sub', 'mv'].includes(a)) {
+          arv.modo = arv.modo === a ? '' : a;
+          renderArvoreCategorias();
+          const i = $('#arvNome');
+          if (i) { i.focus(); i.select(); }
+          return;
+        }
+        if (a === 'tipo') { abrirModalCategoria(c); return; }
+        if (a === 'okRen' || a === 'okSub') {
+          const nome = $('#arvNome').value.trim();
+          if (!nome) { $('#arvNome').focus(); return; }
+          if (a === 'okRen') (s || c).nome = nome;
+          else { c.subs = c.subs || []; c.subs.push({ id: uid('sub'), nome }); }
+          await kvSet('categorias', state.categorias);
+          arv.modo = '';
+          render();
+          toast(a === 'okRen' ? 'Nome salvo' : `Subcategoria criada em ${c.nome}`);
+          return;
+        }
+        if (a === 'okMv') { await moverNaArvore(c, s, $('#arvDest').value); return; }
+        if (a === 'del') excluirNaArvore(c, s, s ? (nSub[arv.sel] || 0) : (nCat[c.id] || 0));
+      };
+    });
+  }
+
+  /** Move subcategoria (para outra categoria ou virando categoria) ou categoria (virando subcategoria). */
+  async function moverNaArvore(c, s, dest) {
+    const mud = [];
+    const trocar = (de, para) => {
+      for (const tx of state.lancamentos) {
+        if (tx.catId === de.catId && (de.subId === undefined || (tx.subId || '') === de.subId)) {
+          tx.catId = para.catId;
+          tx.subId = para.subId;
+          mud.push(tx);
+        }
+      }
+      for (const r of state.regras) {
+        if (r.catId === de.catId && (de.subId === undefined || (r.subId || '') === de.subId)) {
+          r.catId = para.catId;
+          r.subId = para.subId;
+        }
+      }
+    };
+    let msg;
+    if (s) {
+      c.subs = c.subs.filter(x => x !== s);
+      if (dest === '__cat') {
+        const id = getCat(s.id) ? uid('cat') : s.id;
+        const i = state.categorias.indexOf(c);
+        state.categorias.splice(i + 1, 0, { id, nome: s.nome, tipo: c.tipo, cor: c.cor || '#0f5257', subs: [] });
+        trocar({ catId: c.id, subId: s.id }, { catId: id, subId: '' });
+        arv.sel = id;
+        msg = `"${s.nome}" virou categoria`;
+      } else {
+        const b = getCat(dest);
+        if (!b) return;
+        b.subs = b.subs || [];
+        const sid = b.subs.some(x => x.id === s.id) ? uid('sub') : s.id;
+        b.subs.push({ ...s, id: sid });
+        trocar({ catId: c.id, subId: s.id }, { catId: b.id, subId: sid });
+        arv.sel = `${b.id}:${sid}`;
+        msg = `"${s.nome}" foi para ${b.nome}`;
+      }
+    } else {
+      const b = getCat(dest);
+      if (!b || (c.subs || []).length || CATS_FIXAS.includes(c.id)) return;
+      state.categorias = state.categorias.filter(x => x !== c);
+      b.subs = b.subs || [];
+      const sid = b.subs.some(x => x.id === c.id) ? uid('sub') : c.id;
+      b.subs.push({ id: sid, nome: c.nome });
+      trocar({ catId: c.id }, { catId: b.id, subId: sid });
+      if (state.orcamentos[c.id]) {
+        delete state.orcamentos[c.id];
+        await kvSet('orcamentos', state.orcamentos);
+      }
+      arv.sel = `${b.id}:${sid}`;
+      msg = `"${c.nome}" virou subcategoria de ${b.nome}`;
+    }
+    arv.modo = '';
+    await kvSet('categorias', state.categorias);
+    await kvSet('regras', state.regras);
+    if (mud.length) await dbPutLanc(mud);
+    treinarIA();
+    render();
+    toast(`${msg}${mud.length ? ` · ${mud.length} ${mud.length === 1 ? 'lançamento' : 'lançamentos'}` : ''}`);
+  }
+
+  function excluirNaArvore(c, s, n) {
+    const alvo = s || c;
+    const fim = async () => {
+      const mud = [];
+      if (s) {
+        c.subs = c.subs.filter(x => x !== s);
+        for (const tx of state.lancamentos) if (tx.catId === c.id && tx.subId === s.id) { tx.subId = ''; mud.push(tx); }
+        for (const r of state.regras) if (r.catId === c.id && r.subId === s.id) r.subId = '';
+      } else {
+        state.categorias = state.categorias.filter(x => x !== c);
+        for (const tx of state.lancamentos) if (tx.catId === c.id) { tx.catId = ''; tx.subId = ''; tx.catOrigem = ''; mud.push(tx); }
+        state.regras = state.regras.filter(r => r.catId !== c.id);
+        if (state.orcamentos[c.id]) { delete state.orcamentos[c.id]; await kvSet('orcamentos', state.orcamentos); }
+      }
+      arv.sel = '';
+      arv.modo = '';
+      await kvSet('categorias', state.categorias);
+      await kvSet('regras', state.regras);
+      if (mud.length) await dbPutLanc(mud);
+      treinarIA();
+      render();
+      toast(`"${alvo.nome}" excluída`);
+    };
+    if (!s && CATS_FIXAS.includes(c.id)) { toast('Essa categoria o app usa sozinho; dá para renomear, não excluir'); return; }
+    abrirModal({
+      titulo: `Excluir "${alvo.nome}"?`,
+      desc: n
+        ? `${n} ${n === 1 ? 'lançamento está' : 'lançamentos estão'} nela. ${s ? `Eles ficam em ${c.nome}, sem subcategoria.` : 'Eles ficam sem categoria, e as regras dela são apagadas.'}`
+        : 'Nenhum lançamento está nela.',
+      html: '',
+      okTexto: 'Excluir',
+      onOk: fim
     });
   }
 

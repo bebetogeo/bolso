@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F1EFE8" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#141416" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0C0C0E" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Bolso">
@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <script>try{var t=localStorage.getItem('bolso-tema');if(t==='claro'||t==='escuro')document.documentElement.dataset.theme=t==='claro'?'light':'dark'}catch(e){}</script>
+  <script>try{var t=localStorage.getItem('bolso-tema');if(t==='claro'||t==='escuro')document.documentElement.dataset.theme=t==='claro'?'light':'dark';var k=localStorage.getItem('bolso-contraste')||'auto';if(k==='alto'||(k==='auto'&&matchMedia('(prefers-contrast: more)').matches))document.documentElement.dataset.contraste='alto'}catch(e){}</script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -58,6 +58,7 @@
         <div class="card" id="cardFuturo" hidden></div>
         <div class="cd" id="histCard"></div>
         <div class="cd cd-triagem" id="avisoRevisar" hidden></div>
+        <div class="cd" id="cardPessoas" hidden></div>
         <div class="cd" id="cardCats"></div>
         <div class="cd" id="cardOrc" hidden></div>
       </div>
@@ -73,6 +74,7 @@
           <button type="button" data-v="ent">Entradas</button>
           <button type="button" data-v="sai">Saídas</button>
         </div>
+        <div class="pes" id="fPes" role="group" aria-label="Filtrar por pessoa" hidden></div>
         <label class="chk"><input type="checkbox" id="fSem"> Sem categoria</label>
       </div>
 
@@ -177,6 +179,16 @@
       </div>
 
       <div class="card">
+        <h2>Pessoas</h2>
+        <p class="mut">Para acompanhar o que entra e sai para um filho ou outra pessoa. No lançamento, marque em "Para quem".</p>
+        <ul class="lista" id="pessoas-lista"></ul>
+        <div class="row">
+          <input id="pNome" placeholder="Nome (ex.: Matias)" maxlength="30">
+          <button type="button" class="btn" id="pAdd">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Categorias</h2>
         <ul class="lista" id="cats-lista"></ul>
         <p class="mut" style="margin:0">Toque numa categoria para editar o nome ou gerenciar suas subcategorias.</p>
@@ -218,6 +230,13 @@
             <option value="auto">Igual ao do aparelho</option>
             <option value="claro">Claro</option>
             <option value="escuro">Escuro</option>
+          </select>
+        </label>
+        <label>Contraste
+          <select id="contraste">
+            <option value="auto">Igual ao do aparelho</option>
+            <option value="normal">Normal</option>
+            <option value="alto">Alto (película fosca, sol forte)</option>
           </select>
         </label>
       </div>

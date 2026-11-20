@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.5.8';
+  const VERSAO = '2.6.0';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -154,6 +154,8 @@
     orcamentos: {},
     lancamentos: [],
     fixasOcultas: [],
+    pessoas: [],
+    fPessoas: [],
     ia: null,
     iaEx: [],
     csvFila: [],
@@ -358,14 +360,16 @@
   }
 
   async function carregarDadosReais() {
-    const [contas, cats, regras, orc, fixasOcultas, lancs] = await Promise.all([
+    const [contas, cats, regras, orc, fixasOcultas, lancs, pessoas] = await Promise.all([
       kvGet('contas', []),
       kvGet('categorias', null),
       kvGet('regras', []),
       kvGet('orcamentos', {}),
       kvGet('fixasOcultas', []),
-      dbGetAllLanc()
+      dbGetAllLanc(),
+      kvGet('pessoas', [])
     ]);
+    state.pessoas = pessoas || [];
 
     state.contas = contas || [];
     state.categorias = (cats && cats.length) ? cats : JSON.parse(JSON.stringify(CATS_PADRAO));
@@ -384,6 +388,7 @@
       const sug = classificarPorRegra(tx.descHash || tx.desc, tx.valor);
       if (sug) {
         Object.assign(tx, { catId: sug.catId, subId: sug.subId, catOrigem: 'regra' });
+        if (sug.pessoas && sug.pessoas.length && !(tx.pessoas && tx.pessoas.length)) tx.pessoas = [...sug.pessoas];
         mudados.add(tx);
       }
     }
@@ -547,7 +552,9 @@
     const alvo = textoBusca(desc);
     for (const r of state.regras) {
       const c = getCat(r.catId);
-      if (c && r.texto && casaRegra(alvo, r.texto, false, true, desc)) return { catId: r.catId, subId: r.subId || '', origem: 'regra' };
+      if (c && r.texto && casaRegra(alvo, r.texto, false, true, desc)) {
+        return { catId: r.catId, subId: r.subId || '', origem: 'regra', pessoas: (r.pessoas || []).filter(getPessoa) };
+      }
     }
     if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
     // Para saber se quem recebe é empresa: sem o banco que o Nubank põe no fim ("... - NU PAGAMENTOS - IP").
@@ -1042,6 +1049,7 @@
     renderRateioCard();
     renderFuturoCard(parcelasFuturasNoMes(state.mes));
     renderHistoricoCard(meses, cores);
+    renderPessoasCard();
     renderCategoriasCard(res, cores);
     renderOrcamentoCard(res, state.mes === mesAtualStr());
   }
@@ -1521,6 +1529,44 @@
     if (b) b.onclick = () => irPara('orcamento');
   }
 
+  /* ---------- Pessoas: o que entrou e o que saiu para cada uma no mês ---------- */
+  const getPessoa = id => state.pessoas.find(p => p.id === id) || null;
+  const nomesPessoas = ids => (ids || []).map(getPessoa).filter(Boolean).map(p => p.nome).join(', ');
+
+  function renderPessoasCard() {
+    const el = $('#cardPessoas');
+    const doMes = lancamentosDoMes(state.mes).filter(tx => !ehMov(tx) && (tx.pessoas || []).length);
+    const blocos = state.pessoas.map(p => {
+      const dela = doMes.filter(tx => tx.pessoas.includes(p.id));
+      if (!dela.length) return '';
+      const entrou = round2(dela.filter(tx => tx.valor > 0).reduce((a, tx) => a + valorLiquidoEntrada(tx), 0));
+      const gastou = round2(dela.filter(tx => tx.valor < 0).reduce((a, tx) => a + valorLiquidoGasto(tx), 0));
+      const porCat = {};
+      for (const tx of dela) if (tx.valor < 0) porCat[tx.catId || ''] = (porCat[tx.catId || ''] || 0) + valorLiquidoGasto(tx);
+      const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      const max = cats.length ? cats[0][1] : 1;
+      const dif = round2(entrou - gastou);
+      return `
+        <div class="pes-bloco">
+          <div class="cd-top"><b class="pes-nome">${esc(p.nome)}</b><button type="button" class="lnk" data-ver-pes="${esc(p.id)}">Ver lançamentos</button></div>
+          <div class="pes-nums">
+            <div><span class="cd-lb">Entrou</span><span class="num pos">${moed(entrou)}</span></div>
+            <div><span class="cd-lb">Saiu</span><span class="num">${moed(gastou)}</span></div>
+          </div>
+          ${entrou || gastou ? `<p class="mut pes-dif">Diferença no mês: <b class="num">${dif < 0 ? '−' : '+'}${moed(Math.abs(dif))}</b></p>` : ''}
+          ${cats.map(([cid, v]) => `
+            <div class="pes-cat"><span>${esc(cid ? labelCat(cid) : 'Sem categoria')}</span><span class="num">${moed(v)}</span></div>
+            <div class="pes-barra"><i style="width:${Math.round(v / max * 100)}%"></i></div>`).join('')}
+        </div>`;
+    }).filter(Boolean);
+    el.hidden = !blocos.length;
+    if (!blocos.length) return;
+    el.innerHTML = `<span class="cd-lb">Por pessoa · ${esc(labelMes(state.mes).split(' ')[0].toLowerCase())}</span>${blocos.join('')}`;
+    $$('[data-ver-pes]', el).forEach(b => {
+      b.onclick = () => { state.fPessoas = [b.dataset.verPes]; irParaLancamentos({}); };
+    });
+  }
+
   function renderCategoriasCard(res, cores) {
     const el = $('#cardCats');
     const itens = Object.entries(res.porCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
@@ -1658,6 +1704,22 @@
 
   function renderLancamentos() {
     $$('#fTipo button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.fTipo || '')));
+    // Filtro por pessoa: dá para marcar mais de uma (mostra o que é de qualquer uma delas)
+    state.fPessoas = state.fPessoas.filter(getPessoa);
+    const fPes = $('#fPes');
+    fPes.hidden = !state.pessoas.length;
+    fPes.innerHTML = state.pessoas.map(p => {
+      const on = state.fPessoas.includes(p.id);
+      return `<button type="button" class="pes-chip ${on ? 'on' : ''}" data-fpes="${esc(p.id)}" aria-pressed="${on}">${esc(p.nome)}</button>`;
+    }).join('');
+    $$('button[data-fpes]', fPes).forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.fpes;
+        state.fPessoas = state.fPessoas.includes(id) ? state.fPessoas.filter(x => x !== id) : [...state.fPessoas, id];
+        state.limiteLanc = 60;
+        renderLancamentos();
+      };
+    });
     popularFiltrosLancamentos();
 
     const busca = norm($('#busca').value);
@@ -1675,6 +1737,7 @@
         if (state.fTipo === 'ent' && tx.valor <= 0) return false;
         if (state.fTipo === 'sai' && tx.valor >= 0) return false;
         if (fConta && tx.contaId !== fConta) return false;
+        if (state.fPessoas.length && !(tx.pessoas || []).some(id => state.fPessoas.includes(id))) return false;
         if (fCat) {
           if (fCat.includes(':')) {
             const [cid, sid] = fCat.split(':');
@@ -1684,7 +1747,8 @@
           }
         }
         if (busca) {
-          const bateTexto = norm(tx.desc).includes(busca) || norm(labelCat(tx.catId, tx.subId)).includes(busca);
+          const bateTexto = norm(tx.desc).includes(busca) || norm(labelCat(tx.catId, tx.subId)).includes(busca)
+            || norm(nomesPessoas(tx.pessoas)).includes(busca);
           const bateValor = Number.isFinite(buscaNum) && Math.abs(Math.abs(tx.valor) - Math.abs(buscaNum)) < 0.05;
           if (!bateTexto && !bateValor) return false;
         }
@@ -1755,6 +1819,7 @@
             <div class="meta-esq">
               <span class="${tagCls}" style="color:${corCategoria(coresLanc, tx.catId)}">${esc(tagTxt)}${esc(extraInfo)}</span>
               ${tx.parcela ? `<span class="parc-tag">${esc(tx.parcela)}</span>` : ''}
+              ${(tx.pessoas || []).filter(getPessoa).map(id => `<span class="pes-tag">${esc(getPessoa(id).nome)}</span>`).join('')}
             </div>
             <span class="ct">${esc(conta ? nomeCurto(conta) : '')}</span>
           </div>
@@ -1779,7 +1844,7 @@
           tx.subId = btn.dataset.qsub || '';
           tx.catOrigem = 'usuario';
           await dbPutLanc(tx);
-          const outros = await criarRegraEAplicar(sugerirTextoRegra(tx.desc), tx.catId, tx.subId, tx);
+          const outros = await criarRegraEAplicar(sugerirTextoRegra(tx.desc, tx), tx.catId, tx.subId, tx);
           treinarIA();
           toast(`Classificado em ${labelCat(tx.catId, tx.subId)}${outros ? ` · e mais ${outros} parecido${outros === 1 ? '' : 's'}` : ''}`);
           render();
@@ -2279,6 +2344,7 @@
         catId: sug ? sug.catId : '',
         subId: sug ? sug.subId : '',
         catOrigem: sug ? 'regra' : '',
+        ...(sug && sug.pessoas && sug.pessoas.length ? { pessoas: [...sug.pessoas] } : {}),
         parcela: it.parcela || '',
         fitid: it.fitid || '',
         fatura,
@@ -2526,6 +2592,7 @@
 
     const temaSalvo = localStorage.getItem('bolso-tema') || 'auto';
     $('#tema').value = temaSalvo;
+    $('#contraste').value = localStorage.getItem('bolso-contraste') || 'auto';
 
     const ulContas = $('#contas');
     if (!state.contas.length) {
@@ -2562,7 +2629,7 @@
         <li>
           <div>
             <b>${esc(r.texto)}</b>
-            <small>→ ${esc(labelCat(r.catId, r.subId))}</small>
+            <small>→ ${esc(labelCat(r.catId, r.subId))}${(r.pessoas || []).filter(getPessoa).length ? ` · ${esc(nomesPessoas(r.pessoas))}` : ''}</small>
           </div>
           <button type="button" class="x" data-del-regra="${idx}" title="Remover regra">×</button>
         </li>
@@ -2591,6 +2658,19 @@
         <span class="mut">${esc(labelCat(r.catId, r.subId))}</span>
       </li>
     `).join('');
+
+    const ulPes = $('#pessoas-lista');
+    ulPes.innerHTML = state.pessoas.length ? state.pessoas.map(p => {
+      const n = state.lancamentos.filter(tx => (tx.pessoas || []).includes(p.id)).length;
+      return `
+        <li data-pes-edit="${esc(p.id)}">
+          <div><b>${esc(p.nome)}</b><small>${n} ${n === 1 ? 'lançamento marcado' : 'lançamentos marcados'}</small></div>
+          <span class="seta">›</span>
+        </li>`;
+    }).join('') : `<li style="cursor:default"><span class="mut">Nenhuma pessoa cadastrada.</span></li>`;
+    $$('li[data-pes-edit]', ulPes).forEach(li => {
+      li.onclick = () => { const p = getPessoa(li.dataset.pesEdit); if (p) abrirModalPessoa(p); };
+    });
 
     const ulCats = $('#cats-lista');
     const coresAj = coresCategorias(mesesDoPainel());
@@ -2659,8 +2739,19 @@
   }
 
   /** Texto sugerido para a regra: as duas primeiras palavras que dizem algo ("ASSOCIACAO VEREDAS"). */
-  function sugerirTextoRegra(desc) {
-    return BolsoIA.textoRegra(desc, 2);
+  function sugerirTextoRegra(desc, tx) {
+    const s = BolsoIA.textoRegra(desc, 2);
+    // O banco às vezes corta o nome ("MARCOS AZEV" e "MARCOS AZEVEDO"): se já há no app a forma cortada,
+    // sugere ela, que pega as duas. Só com o mesmo sentido, nome com 8+ letras e última palavra com 3+.
+    const sinal = tx ? Math.sign(tx.valor) : 0;
+    let melhor = s;
+    for (const x of state.lancamentos) {
+      if (sinal && Math.sign(x.valor) !== sinal) continue;
+      const t = BolsoIA.textoRegra(x.desc, 2);
+      const ult = t.split(' ').pop();
+      if (t.length >= 8 && ult.length >= 3 && t.length < melhor.length && s.startsWith(t) && t.includes(' ')) melhor = t;
+    }
+    return melhor;
   }
 
   /** Lançamentos já no app que a regra pegaria (mesmo sentido; nunca os que ela classificou à mão). */
@@ -2672,14 +2763,17 @@
   }
 
   /** Cria (ou troca) a regra e aplica a todos os lançamentos parecidos que ela não classificou à mão. */
-  async function criarRegraEAplicar(texto, catId, subId, tx) {
+  async function criarRegraEAplicar(texto, catId, subId, tx, pessoas = []) {
     const chave = norm(texto);
     if (!chave || !getCat(catId)) return 0;
     state.regras = state.regras.filter(r => norm(r.texto) !== chave);
-    state.regras.unshift({ texto: chave, catId, subId });
+    state.regras.unshift({ texto: chave, catId, subId, ...(pessoas.length ? { pessoas: [...pessoas] } : {}) });
     await kvSet('regras', state.regras);
     const lista = parecidosComRegra(chave, tx);
-    for (const x of lista) Object.assign(x, { catId, subId, catOrigem: 'regra' });
+    for (const x of lista) {
+      Object.assign(x, { catId, subId, catOrigem: 'regra' });
+      if (pessoas.length) x.pessoas = [...new Set([...(x.pessoas || []), ...pessoas])];
+    }
     await dbPutLanc(lista);
     return lista.length;
   }
@@ -2744,11 +2838,19 @@
             </select>
           </label>
         ` : ''}
+        ${state.pessoas.length ? `
+          <div class="pes-campo"><span class="pes-lbl">Para quem</span>
+            <div class="pes" id="dlPes">${state.pessoas.map(p => {
+              const on = tx && (tx.pessoas || []).includes(p.id);
+              return `<button type="button" class="pes-chip ${on ? 'on' : ''}" data-pes="${esc(p.id)}" aria-pressed="${on}">${esc(p.nome)}</button>`;
+            }).join('')}</div>
+          </div>` : ''}
         <label id="dlRatWrap">Valor a receber de rateio (opcional)
           <input type="number" id="dlRat" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${tx && tx.rateioEsperado ? Number(tx.rateioEsperado).toFixed(2) : ''}">
         </label>
         <div class="sub-box" id="dlRegraBox" hidden>
           <label>Regra: daqui para frente, descrição com o texto<input id="dlRegraTxt" maxlength="60" placeholder="apague para não criar regra"></label>
+          <label class="chk" id="dlRegraPesWrap" hidden><input type="checkbox" id="dlRegraPes"> Marcar também <b id="dlRegraPesNomes"></b> nos próximos</label>
           <p id="dlRegraN" style="margin:0"></p>
           <p class="mut" id="dlRegraEx" style="margin:0"></p>
         </div>
@@ -2787,12 +2889,32 @@
 
         // Regra: texto sugerido (editável) e quantos lançamentos que já estão no app ela também pegaria.
         const txt = $('#dlRegraTxt');
-        txt.value = sugerirTextoRegra($('#dlDesc').value);
+        txt.value = sugerirTextoRegra($('#dlDesc').value, tx);
         const catIni = tx ? tx.catId : '';
         const subIni = tx ? (tx.subId || '') : '';
+        // "Para quem": marca uma ou mais pessoas cadastradas
+        const pesIni = tx ? [...(tx.pessoas || [])].sort().join(',') : '';
+        const pesSel = () => $$('#dlPes .pes-chip.on').map(b => b.dataset.pes);
+        let marcouRegraPes = false;
+        $$('#dlPes .pes-chip').forEach(b => {
+          b.onclick = () => {
+            b.classList.toggle('on');
+            b.setAttribute('aria-pressed', b.classList.contains('on'));
+            atualizar();
+          };
+        });
+        $('#dlRegraPes').onchange = () => { marcouRegraPes = true; };
         const atualizar = () => {
-          // Só ao trocar a categoria de um lançamento que já existia (o manual é dela, não vira regra).
-          $('#dlRegraBox').hidden = novo || (dlCat.value === catIni && (dlSub.value || '') === subIni);
+          // Só ao trocar a categoria de um lançamento que já existia (o manual é dela, não vira regra),
+          // ou ao marcar pessoa numa entrada (Pix do genitor: os próximos já vêm marcados).
+          const sel = pesSel();
+          const mudouPes = sel.slice().sort().join(',') !== pesIni;
+          $('#dlRegraBox').hidden = novo || ((dlCat.value === catIni && (dlSub.value || '') === subIni)
+            && !(mudouPes && sel.length));
+          $('#dlRegraPesWrap').hidden = !sel.length;
+          $('#dlRegraPesNomes').textContent = nomesPessoas(sel);
+          // Entrada (pensão): a regra também marca a pessoa; gasto: só se ela pedir (a farmácia não é sempre dele)
+          if (!marcouRegraPes) $('#dlRegraPes').checked = dlTipo.value === 'receita';
           const lista = parecidosComRegra(txt.value, tx);
           $('#dlRegraN').textContent = lista.length
             ? `Vale também para ${lista.length} ${lista.length === 1 ? 'lançamento que já está' : 'lançamentos que já estão'} no app.`
@@ -2815,6 +2937,8 @@
         const catId = $('#dlCat').value;
         const subId = $('#dlSub').value || '';
         const rat = Math.max(0, parseValor($('#dlRat').value) || 0);
+        const pessoasSel = $$('#dlPes .pes-chip.on').map(b => b.dataset.pes);
+        const soPessoa = !!tx && tx.catId === catId && (tx.subId || '') === subId;
         if (!data || !Number.isFinite(absVal) || absVal <= 0 || !desc) return false;
 
         let contaId = $('#dlConta').value;
@@ -2844,6 +2968,7 @@
               catId,
               subId,
               catOrigem: 'usuario',
+              ...(pessoasSel.length ? { pessoas: [...pessoasSel] } : {}),
               parcela: nParc > 1 ? `${p}/${nParc}` : '',
               rateioEsperado: p === 1 && rat > 0 ? round2(rat) : 0
             });
@@ -2862,6 +2987,7 @@
           tx.desc = desc;
           tx.catId = catId;
           tx.subId = subId;
+          if (pessoasSel.length) tx.pessoas = pessoasSel; else delete tx.pessoas;
           tx.rateioEsperado = tipo === 'gasto' ? round2(rat) : 0;
           await dbPutLanc(tx);
 
@@ -2873,8 +2999,10 @@
           if (mudouConta) await kvSet('contas', state.contas);
         }
 
-        const aplicados = $('#dlRegraBox').hidden ? 0
-          : await criarRegraEAplicar($('#dlRegraTxt').value, catId, subId, tx);
+        // Só a pessoa mudou (gasto do filho) e ela não pediu para marcar os próximos: não cria regra.
+        const aplicados = $('#dlRegraBox').hidden || (soPessoa && !$('#dlRegraPes').checked) ? 0
+          : await criarRegraEAplicar($('#dlRegraTxt').value, catId, subId, tx,
+            !$('#dlRegraPesWrap').hidden && $('#dlRegraPes').checked ? pessoasSel : []);
         const soltos = desfazerEstornosSoltos();
         if (soltos.length) await dbPutLanc(soltos);
 
@@ -2947,6 +3075,40 @@
 
         await dbPutLanc([alvo, txEntrada]);
         toast(`Abatido ${moed(v)} em ${alvo.desc}`);
+        render();
+      }
+    });
+  }
+
+  function abrirModalPessoa(p) {
+    const n = state.lancamentos.filter(tx => (tx.pessoas || []).includes(p.id)).length;
+    abrirModal({
+      titulo: 'Editar pessoa',
+      desc: n ? `${n} ${n === 1 ? 'lançamento marcado' : 'lançamentos marcados'}. Excluir só tira a marcação; os lançamentos continuam.` : '',
+      html: `<label>Nome<input id="pesNome" maxlength="30" required value="${esc(p.nome)}"></label>`,
+      extraTexto: 'Excluir',
+      onExtra: async () => {
+        state.pessoas = state.pessoas.filter(x => x.id !== p.id);
+        state.fPessoas = state.fPessoas.filter(x => x !== p.id);
+        const mudados = [];
+        for (const tx of state.lancamentos) {
+          if (!(tx.pessoas || []).includes(p.id)) continue;
+          tx.pessoas = tx.pessoas.filter(x => x !== p.id);
+          if (!tx.pessoas.length) delete tx.pessoas;
+          mudados.push(tx);
+        }
+        for (const r of state.regras) if (r.pessoas) { r.pessoas = r.pessoas.filter(x => x !== p.id); if (!r.pessoas.length) delete r.pessoas; }
+        await kvSet('pessoas', state.pessoas);
+        await kvSet('regras', state.regras);
+        if (mudados.length) await dbPutLanc(mudados);
+        toast(`${p.nome} excluída da lista`);
+        render();
+      },
+      onOk: async () => {
+        const nome = $('#pesNome').value.trim();
+        if (!nome) return false;
+        p.nome = nome;
+        await kvSet('pessoas', state.pessoas);
         render();
       }
     });
@@ -3141,6 +3303,7 @@
       regras: state.regras,
       orcamentos: state.orcamentos,
       fixasOcultas: state.fixasOcultas,
+      pessoas: state.pessoas,
       lancamentos: state.lancamentos
     };
     baixar(`bolso-backup-${hojeStr()}.json`, JSON.stringify(payload), 'application/json');
@@ -3180,6 +3343,8 @@
       state.regras = data.regras || [];
       state.orcamentos = data.orcamentos || {};
       state.fixasOcultas = data.fixasOcultas || [];
+      state.pessoas = data.pessoas || [];
+      state.fPessoas = [];
       state.lancamentos = data.lancamentos;
 
       // Cópia de versão antiga (categorias sem origem): mesma migração de quando o app atualiza.
@@ -3198,7 +3363,8 @@
         kvSet('categorias', state.categorias),
         kvSet('regras', state.regras),
         kvSet('orcamentos', state.orcamentos),
-        kvSet('fixasOcultas', state.fixasOcultas)
+        kvSet('fixasOcultas', state.fixasOcultas),
+        kvSet('pessoas', state.pessoas)
       ]);
       await new Promise((resolve, reject) => {
         const tx = state.db.transaction('lancamentos', 'readwrite');
@@ -3221,7 +3387,7 @@
   }
 
   function exportarCSV() {
-    const linhas = ['Data;Descricao;Valor;Categoria;Subcategoria;Conta;Parcela'];
+    const linhas = ['Data;Descricao;Valor;Categoria;Subcategoria;Conta;Parcela;Pessoas'];
     for (const tx of state.lancamentos) {
       const c = getCat(tx.catId);
       const s = c && c.subs ? c.subs.find(x => x.id === tx.subId) : null;
@@ -3233,7 +3399,8 @@
         `"${c ? c.nome : ''}"`,
         `"${s ? s.nome : ''}"`,
         `"${ct ? ct.nome : ''}"`,
-        tx.parcela || ''
+        tx.parcela || '',
+        `"${nomesPessoas(tx.pessoas)}"`
       ].join(';'));
     }
     baixar(`bolso-lancamentos-${hojeStr()}.csv`, '\uFEFF' + linhas.join('\r\n'), 'text/csv;charset=utf-8');
@@ -3342,7 +3509,7 @@
    * Linhas clicáveis que não são <button> (lançamentos, rateios, categorias do painel, contas e categorias
    * em Ajustes): recebem foco pelo teclado e abrem com Enter ou espaço, como um botão.
    */
-  const CLICAVEIS = 'li[data-id], li[data-conta-id], li[data-cat-edit], .ct[data-cid]';
+  const CLICAVEIS = 'li[data-id], li[data-conta-id], li[data-cat-edit], li[data-pes-edit], .ct[data-cid]';
   function marcarClicaveis(raiz = document) {
     const lista = raiz.matches && raiz.matches(CLICAVEIS) ? [raiz] : [];
     for (const el of lista.concat($$(CLICAVEIS, raiz))) {
@@ -3484,6 +3651,14 @@
       else delete document.documentElement.dataset.theme;
     };
 
+    $('#contraste').onchange = () => {
+      const v = $('#contraste').value;
+      localStorage.setItem('bolso-contraste', v);
+      const alto = v === 'alto' || (v === 'auto' && matchMedia('(prefers-contrast: more)').matches);
+      if (alto) document.documentElement.dataset.contraste = 'alto';
+      else delete document.documentElement.dataset.contraste;
+    };
+
     $('#rCat').onchange = atualizarSelectSubRegra;
     $('#rAdd').onclick = async () => {
       const texto = $('#rTexto').value.trim();
@@ -3503,6 +3678,16 @@
       $('#rTexto').value = '';
       renderAjustes();
       toast(lista.length ? `Regra criada · ${lista.length} ${lista.length === 1 ? 'lançamento atualizado' : 'lançamentos atualizados'}` : 'Regra criada');
+    };
+
+    $('#pAdd').onclick = async () => {
+      const nome = $('#pNome').value.trim();
+      if (!nome) return;
+      state.pessoas.push({ id: uid('pes'), nome });
+      await kvSet('pessoas', state.pessoas);
+      $('#pNome').value = '';
+      toast(`${nome} cadastrada: marque em "Para quem" nos lançamentos`);
+      renderAjustes();
     };
 
     $('#cAdd').onclick = async () => {
@@ -3540,8 +3725,11 @@
       state.regras = [];
       state.orcamentos = {};
       state.fixasOcultas = [];
+      state.pessoas = [];
+      state.fPessoas = [];
       state.lancamentos = [];
       await Promise.all([
+        kvSet('pessoas', []),
         kvSet('contas', []),
         kvSet('categorias', state.categorias),
         kvSet('regras', []),

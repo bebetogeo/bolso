@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.6.0';
+  const VERSAO = '2.6.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1052,6 +1052,7 @@
     renderPessoasCard();
     renderCategoriasCard(res, cores);
     renderOrcamentoCard(res, state.mes === mesAtualStr());
+    renderMaioresCard();
   }
 
   /* ---------- Saldo das contas: o box do topo, as tabelas mês a mês e o gráfico usam as mesmas contas ---------- */
@@ -1564,6 +1565,37 @@
     el.innerHTML = `<span class="cd-lb">Por pessoa · ${esc(labelMes(state.mes).split(' ')[0].toLowerCase())}</span>${blocos.join('')}`;
     $$('[data-ver-pes]', el).forEach(b => {
       b.onclick = () => { state.fPessoas = [b.dataset.verPes]; irParaLancamentos({}); };
+    });
+  }
+
+  /* ---------- Maiores gastos do mês: lista no fim da tela, do maior para o menor ---------- */
+  function renderMaioresCard() {
+    const el = $('#cardMaiores');
+    const gastos = lancamentosDoMes(state.mes)
+      .filter(tx => tx.valor < 0 && !ehMov(tx) && valorLiquidoGasto(tx) > 0)
+      .sort((a, b) => valorLiquidoGasto(b) - valorLiquidoGasto(a))
+      .slice(0, 10);
+    el.hidden = !gastos.length;
+    if (!gastos.length) return;
+    el.innerHTML = `
+      <div class="cd-top"><p class="cd-tt">Maiores gastos do mês</p><button type="button" class="lnk" data-ver-gastos>Ver todos</button></div>
+      <ol class="mg-lista">
+        ${gastos.map(tx => {
+          const dia = `${tx.data.slice(8, 10)}/${tx.data.slice(5, 7)}`;
+          const nome = tx.desc.split(' · ')[0];
+          return `<li data-mg="${esc(tx.id)}">
+            <span class="mg-d"><span class="mg-n">${esc(nome)}</span>
+              <small>${dia} · ${esc(tx.catId ? labelCat(tx.catId, tx.subId) : 'Sem categoria')}${(tx.pessoas || []).length ? ` · ${esc(nomesPessoas(tx.pessoas))}` : ''}</small></span>
+            <span class="num">${moed(valorLiquidoGasto(tx))}</span>
+          </li>`;
+        }).join('')}
+      </ol>`;
+    $('[data-ver-gastos]', el).onclick = () => { state.fPessoas = []; irParaLancamentos({ tipo: 'sai' }); };
+    $$('li[data-mg]', el).forEach(li => {
+      li.onclick = () => {
+        const tx = state.lancamentos.find(x => x.id === li.dataset.mg);
+        if (tx) abrirModalLancamento(tx);
+      };
     });
   }
 
@@ -3509,7 +3541,7 @@
    * Linhas clicáveis que não são <button> (lançamentos, rateios, categorias do painel, contas e categorias
    * em Ajustes): recebem foco pelo teclado e abrem com Enter ou espaço, como um botão.
    */
-  const CLICAVEIS = 'li[data-id], li[data-conta-id], li[data-cat-edit], li[data-pes-edit], .ct[data-cid]';
+  const CLICAVEIS = 'li[data-id], li[data-conta-id], li[data-cat-edit], li[data-pes-edit], li[data-mg], .ct[data-cid]';
   function marcarClicaveis(raiz = document) {
     const lista = raiz.matches && raiz.matches(CLICAVEIS) ? [raiz] : [];
     for (const el of lista.concat($$(CLICAVEIS, raiz))) {

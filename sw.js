@@ -1,4 +1,4 @@
-const CACHE = 'bolso-v2.6.0';
+const CACHE = 'bolso-v2.6.1';
 const ATIVOS = [
   './',
   './index.html',

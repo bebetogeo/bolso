@@ -1282,3 +1282,10 @@ body.privado .spark .pt-v { filter: blur(4px); }
 .pes-cat { display: flex; justify-content: space-between; font-size: 0.85rem; margin-top: 4px; }
 .pes-barra { height: 6px; border-radius: 3px; background: var(--trk); overflow: hidden; }
 .pes-barra i { display: block; height: 100%; background: var(--pri); }
+.mg-lista { list-style: none; margin: 8px 0 0; padding: 0; }
+.mg-lista li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--lin); cursor: pointer; }
+.mg-lista li:first-child { border-top: 0; }
+.mg-d { display: flex; flex-direction: column; min-width: 0; }
+.mg-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; }
+.mg-d small { color: var(--mut); font-size: 0.78rem; }
+.mg-lista .num { font-weight: 600; white-space: nowrap; }

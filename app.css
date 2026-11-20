@@ -1271,6 +1271,12 @@ body.privado .spark .pt-v { filter: blur(4px); }
 .pes-chip.on { background: var(--pri); border-color: var(--pri); color: var(--pri-fg); font-weight: 600; }
 .pes-campo { display: flex; flex-direction: column; gap: 6px; }
 .pes-lbl { font-size: 0.85rem; color: var(--mut); }
+.parte { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; font-size: 0.85rem; }
+.parte-in { display: flex; gap: 6px; }
+.parte > span:first-child { white-space: nowrap; }
+#dlPartes .parte-in input { width: 6.5em; flex: none; text-align: right; }
+#dlPartes .parte-in select { width: auto; flex: none; }
+.parte small { grid-column: 1 / -1; color: var(--mut); font-size: 0.78rem; text-align: right; }
 .pes-tag { font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--pri-suave); color: var(--fg); white-space: nowrap; }
 .pes-bloco { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--lin); }
 .cd-lb + .pes-bloco { border-top: 0; padding-top: 4px; }

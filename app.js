@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.6.1';
+  const VERSAO = '2.6.2';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -138,6 +138,7 @@
     { id: 'outros', nome: 'Outros gastos', tipo: 'gasto', cor: '#8b9999', subs: [] },
     { id: 'salario', nome: 'Salário & Receitas', tipo: 'receita', cor: '#1e824c', subs: [] },
     { id: 'rendimentos', nome: 'Rendimentos & Extras', tipo: 'receita', cor: '#3ca370', subs: [] },
+    { id: 'pensao', nome: 'Pensão', tipo: 'receita', cor: '#2f9e8f', subs: [] },
     { id: 'transf', nome: 'Transferência / Fatura', tipo: 'mov', cor: '#7f8c8d', subs: [] }
   ];
 
@@ -378,8 +379,8 @@
     state.orcamentos = orc || {};
     state.fixasOcultas = fixasOcultas || [];
     state.lancamentos = lancs || [];
-
     await migrar();
+    await garantirPensao();
     treinarIA();
 
     const mudados = new Set(conciliarTransferencias());
@@ -388,7 +389,10 @@
       const sug = classificarPorRegra(tx.descHash || tx.desc, tx.valor);
       if (sug) {
         Object.assign(tx, { catId: sug.catId, subId: sug.subId, catOrigem: 'regra' });
-        if (sug.pessoas && sug.pessoas.length && !(tx.pessoas && tx.pessoas.length)) tx.pessoas = [...sug.pessoas];
+        if (sug.pessoas && sug.pessoas.length && !(tx.pessoas && tx.pessoas.length)) {
+          tx.pessoas = [...sug.pessoas];
+          if (sug.partes && Object.keys(sug.partes).length) tx.partes = { ...sug.partes };
+        }
         mudados.add(tx);
       }
     }
@@ -454,6 +458,21 @@
     await kvSet('contas', state.contas);
     await dbPutLanc(state.lancamentos);
     await kvSet('migracao', MIGRACAO);
+  }
+
+  /** Categoria de entrada "Pensão" (2.6.2): entra uma vez em quem já usa o app; se ela apagar, não volta. */
+  async function garantirPensao() {
+    if (state.exemplo || (await kvGet('cat-pensao', false))) return;
+    const jaTem = getCat('pensao') || state.categorias.some(c => c.tipo === 'receita' && /PENS[AÃ]O/.test(norm(c.nome)));
+    if (!jaTem) {
+      const c = JSON.parse(JSON.stringify(CATS_PADRAO.find(x => x.id === 'pensao')));
+      const iRend = state.categorias.findIndex(x => x.id === 'rendimentos');
+      const iRec = state.categorias.map(x => x.tipo).lastIndexOf('receita');
+      const i = iRend >= 0 ? iRend + 1 : iRec >= 0 ? iRec + 1 : state.categorias.length;
+      state.categorias.splice(i, 0, c);
+      await kvSet('categorias', state.categorias);
+    }
+    await kvSet('cat-pensao', true);
   }
 
   /** Apaga as categorias de origem desconhecida e reaplica só as regras. */
@@ -553,7 +572,8 @@
     for (const r of state.regras) {
       const c = getCat(r.catId);
       if (c && r.texto && casaRegra(alvo, r.texto, false, true, desc)) {
-        return { catId: r.catId, subId: r.subId || '', origem: 'regra', pessoas: (r.pessoas || []).filter(getPessoa) };
+        const pessoas = (r.pessoas || []).filter(getPessoa);
+        return { catId: r.catId, subId: r.subId || '', origem: 'regra', pessoas, partes: partesDe(r, pessoas) };
       }
     }
     if (pareceMesmaTitularidade(norm(desc)) && getCat('transf')) return { catId: 'transf', subId: '', origem: 'regra' };
@@ -1533,6 +1553,22 @@
   /* ---------- Pessoas: o que entrou e o que saiu para cada uma no mês ---------- */
   const getPessoa = id => state.pessoas.find(p => p.id === id) || null;
   const nomesPessoas = ids => (ids || []).map(getPessoa).filter(Boolean).map(p => p.nome).join(', ');
+  // Parte de cada pessoa num lançamento (ou regra): partes = { idDaPessoa: percentual }. Sem parte, é tudo dela.
+  // Ex.: boleto da Unimed com a mensalidade da Ana e a do Matias → Matias 45%.
+  const fmtPct = v => `${String(Math.round(v * 10) / 10).replace('.', ',')}%`;
+  const fracaoPessoa = (tx, id) => { const p = tx.partes && tx.partes[id]; return Number.isFinite(p) ? p / 100 : 1; };
+  const rotuloPessoa = (tx, id) => {
+    const p = getPessoa(id);
+    if (!p) return '';
+    const pc = tx.partes && tx.partes[id];
+    return Number.isFinite(pc) ? `${p.nome} ${fmtPct(pc)}` : p.nome;
+  };
+  const rotulosPessoas = tx => (tx.pessoas || []).map(id => rotuloPessoa(tx, id)).filter(Boolean).join(', ');
+  function partesDe(obj, ids) {
+    const o = {};
+    for (const id of ids || []) if (obj.partes && Number.isFinite(obj.partes[id])) o[id] = obj.partes[id];
+    return o;
+  }
 
   function renderPessoasCard() {
     const el = $('#cardPessoas');
@@ -1540,10 +1576,11 @@
     const blocos = state.pessoas.map(p => {
       const dela = doMes.filter(tx => tx.pessoas.includes(p.id));
       if (!dela.length) return '';
-      const entrou = round2(dela.filter(tx => tx.valor > 0).reduce((a, tx) => a + valorLiquidoEntrada(tx), 0));
-      const gastou = round2(dela.filter(tx => tx.valor < 0).reduce((a, tx) => a + valorLiquidoGasto(tx), 0));
+      const f = tx => fracaoPessoa(tx, p.id);
+      const entrou = round2(dela.filter(tx => tx.valor > 0).reduce((a, tx) => a + valorLiquidoEntrada(tx) * f(tx), 0));
+      const gastou = round2(dela.filter(tx => tx.valor < 0).reduce((a, tx) => a + valorLiquidoGasto(tx) * f(tx), 0));
       const porCat = {};
-      for (const tx of dela) if (tx.valor < 0) porCat[tx.catId || ''] = (porCat[tx.catId || ''] || 0) + valorLiquidoGasto(tx);
+      for (const tx of dela) if (tx.valor < 0) porCat[tx.catId || ''] = (porCat[tx.catId || ''] || 0) + valorLiquidoGasto(tx) * f(tx);
       const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]).slice(0, 4);
       const max = cats.length ? cats[0][1] : 1;
       const dif = round2(entrou - gastou);
@@ -1585,7 +1622,7 @@
           const nome = tx.desc.split(' · ')[0];
           return `<li data-mg="${esc(tx.id)}">
             <span class="mg-d"><span class="mg-n">${esc(nome)}</span>
-              <small>${dia} · ${esc(tx.catId ? labelCat(tx.catId, tx.subId) : 'Sem categoria')}${(tx.pessoas || []).length ? ` · ${esc(nomesPessoas(tx.pessoas))}` : ''}</small></span>
+              <small>${dia} · ${esc(tx.catId ? labelCat(tx.catId, tx.subId) : 'Sem categoria')}${(tx.pessoas || []).length ? ` · ${esc(rotulosPessoas(tx))}` : ''}</small></span>
             <span class="num">${moed(valorLiquidoGasto(tx))}</span>
           </li>`;
         }).join('')}
@@ -1851,7 +1888,7 @@
             <div class="meta-esq">
               <span class="${tagCls}" style="color:${corCategoria(coresLanc, tx.catId)}">${esc(tagTxt)}${esc(extraInfo)}</span>
               ${tx.parcela ? `<span class="parc-tag">${esc(tx.parcela)}</span>` : ''}
-              ${(tx.pessoas || []).filter(getPessoa).map(id => `<span class="pes-tag">${esc(getPessoa(id).nome)}</span>`).join('')}
+              ${(tx.pessoas || []).filter(getPessoa).map(id => `<span class="pes-tag">${esc(rotuloPessoa(tx, id))}</span>`).join('')}
             </div>
             <span class="ct">${esc(conta ? nomeCurto(conta) : '')}</span>
           </div>
@@ -2377,6 +2414,7 @@
         subId: sug ? sug.subId : '',
         catOrigem: sug ? 'regra' : '',
         ...(sug && sug.pessoas && sug.pessoas.length ? { pessoas: [...sug.pessoas] } : {}),
+        ...(sug && sug.partes && Object.keys(sug.partes).length ? { partes: { ...sug.partes } } : {}),
         parcela: it.parcela || '',
         fitid: it.fitid || '',
         fatura,
@@ -2661,7 +2699,7 @@
         <li>
           <div>
             <b>${esc(r.texto)}</b>
-            <small>→ ${esc(labelCat(r.catId, r.subId))}${(r.pessoas || []).filter(getPessoa).length ? ` · ${esc(nomesPessoas(r.pessoas))}` : ''}</small>
+            <small>→ ${esc(labelCat(r.catId, r.subId))}${(r.pessoas || []).filter(getPessoa).length ? ` · ${esc(rotulosPessoas(r))}` : ''}</small>
           </div>
           <button type="button" class="x" data-del-regra="${idx}" title="Remover regra">×</button>
         </li>
@@ -2772,7 +2810,19 @@
 
   /** Texto sugerido para a regra: as duas primeiras palavras que dizem algo ("ASSOCIACAO VEREDAS"). */
   function sugerirTextoRegra(desc, tx) {
-    const s = BolsoIA.textoRegra(desc, 2);
+    let s = BolsoIA.textoRegra(desc, 2);
+    // Se pulou palavras comuns do meio ("UNIMED BELO HORIZONTE COOPERAT" → "UNIMED COOPERAT"), o texto não
+    // casaria nem com o próprio lançamento: usa então as palavras seguidas, do primeiro ao último termo.
+    if (!casaRegra(textoBusca(desc), s, false, true, desc)) {
+      const ws = norm(desc.split(' · ')[0]).replace(/\*/g, ' ').split(/\s+/).filter(Boolean);
+      const ts = s.split(' ');
+      const i = ws.indexOf(ts[0]);
+      const j = i < 0 ? -1 : ws.indexOf(ts[ts.length - 1], i);
+      if (i >= 0 && j >= i) {
+        const junto = ws.slice(i, j + 1).join(' ');
+        if (casaRegra(textoBusca(desc), junto, false, true, desc)) s = junto;
+      }
+    }
     // O banco às vezes corta o nome ("MARCOS AZEV" e "MARCOS AZEVEDO"): se já há no app a forma cortada,
     // sugere ela, que pega as duas. Só com o mesmo sentido, nome com 8+ letras e última palavra com 3+.
     const sinal = tx ? Math.sign(tx.valor) : 0;
@@ -2795,16 +2845,25 @@
   }
 
   /** Cria (ou troca) a regra e aplica a todos os lançamentos parecidos que ela não classificou à mão. */
-  async function criarRegraEAplicar(texto, catId, subId, tx, pessoas = []) {
+  async function criarRegraEAplicar(texto, catId, subId, tx, pessoas = [], partes = {}) {
     const chave = norm(texto);
     if (!chave || !getCat(catId)) return 0;
+    const temPartes = Object.keys(partes).length > 0;
     state.regras = state.regras.filter(r => norm(r.texto) !== chave);
-    state.regras.unshift({ texto: chave, catId, subId, ...(pessoas.length ? { pessoas: [...pessoas] } : {}) });
+    state.regras.unshift({ texto: chave, catId, subId, ...(pessoas.length ? { pessoas: [...pessoas] } : {}),
+      ...(temPartes ? { partes: { ...partes } } : {}) });
     await kvSet('regras', state.regras);
     const lista = parecidosComRegra(chave, tx);
     for (const x of lista) {
       Object.assign(x, { catId, subId, catOrigem: 'regra' });
-      if (pessoas.length) x.pessoas = [...new Set([...(x.pessoas || []), ...pessoas])];
+      if (pessoas.length) {
+        x.pessoas = [...new Set([...(x.pessoas || []), ...pessoas])];
+        for (const id of pessoas) {
+          if (Number.isFinite(partes[id])) x.partes = { ...(x.partes || {}), [id]: partes[id] };
+          else if (x.partes) delete x.partes[id];
+        }
+        if (x.partes && !Object.keys(x.partes).length) delete x.partes;
+      }
     }
     await dbPutLanc(lista);
     return lista.length;
@@ -2823,6 +2882,22 @@
     const contaOpts = state.contas.length
       ? state.contas.map(c => `<option value="${esc(c.id)}" ${tx && tx.contaId === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')
       : `<option value="__padrao__">Carteira / Conta Principal</option>`;
+
+    // Parte de cada pessoa marcada: em % ou em R$ (vira %). Em branco = o lançamento todo é dela.
+    const valorDoDialogo = () => Math.abs(parseValor($('#dlValor').value)) || Math.abs(tx ? tx.valor : 0);
+    const lerPartes = () => {
+      const o = {};
+      for (const inp of $$('#dlPartes input[data-parte]')) {
+        const v = parseValor(inp.value);
+        if (!Number.isFinite(v) || v <= 0) continue;
+        const un = $(`#dlPartes select[data-parte-un="${inp.dataset.parte}"]`).value;
+        const tot = valorDoDialogo();
+        let pc = un === 'rs' ? (tot ? v / tot * 100 : 0) : v;
+        pc = Math.round(Math.min(pc, 100) * 10000) / 10000;
+        if (pc > 0 && pc < 99.995) o[inp.dataset.parte] = pc;
+      }
+      return o;
+    };
 
     abrirModal({
       titulo: novo ? 'Novo lançamento' : 'Editar lançamento',
@@ -2876,6 +2951,7 @@
               const on = tx && (tx.pessoas || []).includes(p.id);
               return `<button type="button" class="pes-chip ${on ? 'on' : ''}" data-pes="${esc(p.id)}" aria-pressed="${on}">${esc(p.nome)}</button>`;
             }).join('')}</div>
+            <div id="dlPartes"></div>
           </div>` : ''}
         <label id="dlRatWrap">Valor a receber de rateio (opcional)
           <input type="number" id="dlRat" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${tx && tx.rateioEsperado ? Number(tx.rateioEsperado).toFixed(2) : ''}">
@@ -2925,13 +3001,59 @@
         const catIni = tx ? tx.catId : '';
         const subIni = tx ? (tx.subId || '') : '';
         // "Para quem": marca uma ou mais pessoas cadastradas
-        const pesIni = tx ? [...(tx.pessoas || [])].sort().join(',') : '';
         const pesSel = () => $$('#dlPes .pes-chip.on').map(b => b.dataset.pes);
+        const chavePes = () => {
+          const p = lerPartes();
+          return pesSel().sort().map(id => `${id}${Number.isFinite(p[id]) ? '=' + p[id] : ''}`).join(',');
+        };
         let marcouRegraPes = false;
+        // Campo "Parte de <nome>" para cada pessoa marcada (guarda o que já foi digitado ao marcar outra)
+        const digitado = {};
+        if (tx && tx.partes) for (const [id, pc] of Object.entries(tx.partes)) digitado[id] = { v: String(Math.round(pc * 100) / 100).replace('.', ','), un: 'pct' };
+        const eqParte = id => {
+          const inp = $(`#dlPartes input[data-parte="${id}"]`);
+          const un = $(`#dlPartes select[data-parte-un="${id}"]`).value;
+          const v = parseValor(inp.value);
+          const tot = valorDoDialogo();
+          const eq = $(`#dlPartes [data-parte-eq="${id}"]`);
+          if (!Number.isFinite(v) || v <= 0 || !tot) { eq.textContent = 'em branco = tudo'; return; }
+          eq.textContent = un === 'rs' ? `= ${fmtPct(Math.min(v / tot * 100, 100))}` : `= ${moed(Math.min(v, 100) / 100 * tot)}`;
+        };
+        const renderPartes = () => {
+          const box = $('#dlPartes');
+          if (!box) return;
+          for (const inp of $$('input[data-parte]', box)) {
+            digitado[inp.dataset.parte] = { v: inp.value, un: $(`select[data-parte-un="${inp.dataset.parte}"]`, box).value };
+          }
+          box.innerHTML = pesSel().map(id => {
+            const d = digitado[id] || { v: '', un: 'pct' };
+            return `<div class="parte"><span>Parte de ${esc(getPessoa(id).nome)}</span>
+              <span class="parte-in"><input type="text" inputmode="decimal" data-parte="${esc(id)}" value="${esc(d.v)}" placeholder="tudo" aria-label="Parte de ${esc(getPessoa(id).nome)}">
+              <select data-parte-un="${esc(id)}" aria-label="Unidade"><option value="pct" ${d.un === 'pct' ? 'selected' : ''}>%</option><option value="rs" ${d.un === 'rs' ? 'selected' : ''}>R$</option></select></span>
+              <small data-parte-eq="${esc(id)}"></small></div>`;
+          }).join('');
+          for (const inp of $$('input[data-parte]', box)) {
+            const id = inp.dataset.parte;
+            const sel = $(`select[data-parte-un="${id}"]`, box);
+            inp.oninput = () => { eqParte(id); atualizar(); };
+            sel.onchange = () => {
+              // troca a unidade convertendo o que já estava escrito
+              const v = parseValor(inp.value);
+              const tot = valorDoDialogo();
+              if (Number.isFinite(v) && v > 0 && tot) {
+                const nv = sel.value === 'rs' ? Math.min(v, 100) / 100 * tot : v / tot * 100;
+                inp.value = String(Math.round(nv * 100) / 100).replace('.', ',');
+              }
+              eqParte(id); atualizar();
+            };
+            eqParte(id);
+          }
+        };
         $$('#dlPes .pes-chip').forEach(b => {
           b.onclick = () => {
             b.classList.toggle('on');
             b.setAttribute('aria-pressed', b.classList.contains('on'));
+            renderPartes();
             atualizar();
           };
         });
@@ -2940,7 +3062,7 @@
           // Só ao trocar a categoria de um lançamento que já existia (o manual é dela, não vira regra),
           // ou ao marcar pessoa numa entrada (Pix do genitor: os próximos já vêm marcados).
           const sel = pesSel();
-          const mudouPes = sel.slice().sort().join(',') !== pesIni;
+          const mudouPes = chavePes() !== pesIni;
           $('#dlRegraBox').hidden = novo || ((dlCat.value === catIni && (dlSub.value || '') === subIni)
             && !(mudouPes && sel.length));
           $('#dlRegraPesWrap').hidden = !sel.length;
@@ -2959,6 +3081,8 @@
         dlCat.onchange = () => { syncSubs(); atualizar(); };
         dlSub.onchange = atualizar;
         txt.oninput = atualizar;
+        renderPartes();
+        const pesIni = chavePes();
         atualizar();
       },
       onOk: async () => {
@@ -2970,6 +3094,8 @@
         const subId = $('#dlSub').value || '';
         const rat = Math.max(0, parseValor($('#dlRat').value) || 0);
         const pessoasSel = $$('#dlPes .pes-chip.on').map(b => b.dataset.pes);
+        const partesSel = partesDe({ partes: lerPartes() }, pessoasSel);
+        const temPartes = Object.keys(partesSel).length > 0;
         const soPessoa = !!tx && tx.catId === catId && (tx.subId || '') === subId;
         if (!data || !Number.isFinite(absVal) || absVal <= 0 || !desc) return false;
 
@@ -3001,6 +3127,7 @@
               subId,
               catOrigem: 'usuario',
               ...(pessoasSel.length ? { pessoas: [...pessoasSel] } : {}),
+              ...(temPartes ? { partes: { ...partesSel } } : {}),
               parcela: nParc > 1 ? `${p}/${nParc}` : '',
               rateioEsperado: p === 1 && rat > 0 ? round2(rat) : 0
             });
@@ -3020,6 +3147,7 @@
           tx.catId = catId;
           tx.subId = subId;
           if (pessoasSel.length) tx.pessoas = pessoasSel; else delete tx.pessoas;
+          if (temPartes) tx.partes = { ...partesSel }; else delete tx.partes;
           tx.rateioEsperado = tipo === 'gasto' ? round2(rat) : 0;
           await dbPutLanc(tx);
 
@@ -3034,7 +3162,7 @@
         // Só a pessoa mudou (gasto do filho) e ela não pediu para marcar os próximos: não cria regra.
         const aplicados = $('#dlRegraBox').hidden || (soPessoa && !$('#dlRegraPes').checked) ? 0
           : await criarRegraEAplicar($('#dlRegraTxt').value, catId, subId, tx,
-            !$('#dlRegraPesWrap').hidden && $('#dlRegraPes').checked ? pessoasSel : []);
+            ...(!$('#dlRegraPesWrap').hidden && $('#dlRegraPes').checked ? [pessoasSel, partesSel] : [[], {}]));
         const soltos = desfazerEstornosSoltos();
         if (soltos.length) await dbPutLanc(soltos);
 
@@ -3127,9 +3255,13 @@
           if (!(tx.pessoas || []).includes(p.id)) continue;
           tx.pessoas = tx.pessoas.filter(x => x !== p.id);
           if (!tx.pessoas.length) delete tx.pessoas;
+          if (tx.partes) { delete tx.partes[p.id]; if (!Object.keys(tx.partes).length) delete tx.partes; }
           mudados.push(tx);
         }
-        for (const r of state.regras) if (r.pessoas) { r.pessoas = r.pessoas.filter(x => x !== p.id); if (!r.pessoas.length) delete r.pessoas; }
+        for (const r of state.regras) {
+          if (r.pessoas) { r.pessoas = r.pessoas.filter(x => x !== p.id); if (!r.pessoas.length) delete r.pessoas; }
+          if (r.partes) { delete r.partes[p.id]; if (!Object.keys(r.partes).length) delete r.partes; }
+        }
         await kvSet('pessoas', state.pessoas);
         await kvSet('regras', state.regras);
         if (mudados.length) await dbPutLanc(mudados);
@@ -3432,7 +3564,7 @@
         `"${s ? s.nome : ''}"`,
         `"${ct ? ct.nome : ''}"`,
         tx.parcela || '',
-        `"${nomesPessoas(tx.pessoas)}"`
+        `"${rotulosPessoas(tx)}"`
       ].join(';'));
     }
     baixar(`bolso-lancamentos-${hojeStr()}.csv`, '\uFEFF' + linhas.join('\r\n'), 'text/csv;charset=utf-8');

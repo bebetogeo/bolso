@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.6.2';
+  const VERSAO = '2.6.3';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -263,13 +263,22 @@
   }
 
   let toastTimer = null;
-  function toast(msg) {
+  /** Aviso rápido no rodapé; com acao ({ texto, fn }), mostra um botão (ex.: Desfazer) e fica mais tempo. */
+  function toast(msg, acao = null) {
     const el = $('#toast');
     if (!el) return;
     el.textContent = msg;
+    if (acao) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'toast-bt';
+      b.textContent = acao.texto;
+      b.onclick = () => { el.hidden = true; clearTimeout(toastTimer); acao.fn(); };
+      el.append(' ', b);
+    }
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+    toastTimer = setTimeout(() => { el.hidden = true; }, acao ? 8000 : 3200);
   }
 
   /* ========================================================================
@@ -1858,7 +1867,11 @@
       const ehFuturo = tx.data > hoje;
 
       let extraInfo = '';
-      if (tx.abatido > 0) extraInfo += ` · abatido ${moed(tx.abatido)}`;
+      // Pix que o banco rejeitou e devolveu (o débito e a devolução aparecem no extrato): não foi gasto.
+      const est = tx.estornoPor && state.lancamentos.find(x => x.id === tx.estornoPor);
+      const rejeitado = est && /REJEITADO|NAO EFETUADO/.test(norm(est.desc)) && tx.abatido >= Math.abs(tx.valor) - 0.005;
+      if (rejeitado) extraInfo += ' · não efetuado, o banco devolveu';
+      else if (tx.abatido > 0) extraInfo += ` · abatido ${moed(tx.abatido)}`;
       if (tx.usadoAbate > 0) extraInfo += ` · abateu ${moed(tx.usadoAbate)}`;
       if (tx.rateioEsperado > (tx.abatido || 0)) extraInfo += ` · rateio pend. ${moed(tx.rateioEsperado - (tx.abatido || 0))}`;
 
@@ -1909,14 +1922,19 @@
       $$('button[data-qcat]', li).forEach(btn => {
         btn.onclick = async e => {
           e.stopPropagation();
+          const antes = new Map([[tx.id, JSON.parse(JSON.stringify(tx))]]);
+          const regrasAntes = JSON.parse(JSON.stringify(state.regras));
           tx.catId = btn.dataset.qcat;
           tx.subId = btn.dataset.qsub || '';
           tx.catOrigem = 'usuario';
           await dbPutLanc(tx);
-          const outros = await criarRegraEAplicar(sugerirTextoRegra(tx.desc, tx), tx.catId, tx.subId, tx);
+          // Pix para uma pessoa: só este (para os parecidos, ela abre o lançamento e marca o tique)
+          const outros = ehPixParaPessoa(tx) ? 0
+            : await criarRegraEAplicar(sugerirTextoRegra(tx.desc, tx), tx.catId, tx.subId, tx, [], {}, antes);
           treinarIA();
-          toast(`Classificado em ${labelCat(tx.catId, tx.subId)}${outros ? ` · e mais ${outros} parecido${outros === 1 ? '' : 's'}` : ''}`);
           render();
+          toast(`Classificado em ${labelCat(tx.catId, tx.subId)}${outros ? ` · e mais ${outros} parecido${outros === 1 ? '' : 's'}` : ''}`,
+            { texto: 'Desfazer', fn: () => desfazerEdicao(antes, regrasAntes) });
         };
       });
 
@@ -2705,11 +2723,43 @@
         </li>
       `).join('');
       $$('button[data-del-regra]', ulRegras).forEach(btn => {
-        btn.onclick = async () => {
-          state.regras.splice(Number(btn.dataset.delRegra), 1);
-          await kvSet('regras', state.regras);
-          renderAjustes();
-          toast('Regra removida');
+        btn.onclick = () => {
+          const r = state.regras[Number(btn.dataset.delRegra)];
+          if (!r) return;
+          // Os que a regra classificou (não os que ela fez à mão)
+          const marcados = state.lancamentos.filter(x => x.catOrigem === 'regra' && x.catId === r.catId
+            && (x.subId || '') === (r.subId || '') && casaRegra(textoBusca(x.desc), r.texto, false, true, x.descHash || x.desc));
+          const remover = async desfazer => {
+            state.regras = state.regras.filter(x => x !== r);
+            await kvSet('regras', state.regras);
+            if (desfazer) {
+              for (const x of marcados) {
+                Object.assign(x, { catId: '', subId: '', catOrigem: '' });
+                for (const id of r.pessoas || []) {
+                  if (x.pessoas) x.pessoas = x.pessoas.filter(p => p !== id);
+                  if (x.partes) delete x.partes[id];
+                }
+                if (x.pessoas && !x.pessoas.length) delete x.pessoas;
+                if (x.partes && !Object.keys(x.partes).length) delete x.partes;
+                // volta ao que o app sugeriria sozinho (ex.: Pix e transferências), ou fica sem categoria
+                const sug = classificarPorRegra(x.descHash || x.desc, x.valor);
+                if (sug) Object.assign(x, { catId: sug.catId, subId: sug.subId, catOrigem: 'regra' });
+              }
+              await dbPutLanc(marcados);
+              treinarIA();
+            }
+            render();
+            toast(desfazer ? `Regra removida · ${marcados.length} ${marcados.length === 1 ? 'lançamento voltou' : 'lançamentos voltaram'}` : 'Regra removida');
+          };
+          if (!marcados.length) { remover(false); return; }
+          const nomes = nomesPessoas(r.pessoas);
+          abrirModal({
+            titulo: 'Remover regra?',
+            desc: `"${r.texto}" → ${labelCat(r.catId, r.subId)}${nomes ? ` · ${nomes}` : ''}. Ela classificou ${marcados.length} ${marcados.length === 1 ? 'lançamento' : 'lançamentos'}.`,
+            html: `<label class="chk"><input type="checkbox" id="rgDesfazer" checked> Desfazer também nesses ${marcados.length} (voltam para a classificação automática${nomes ? ` e sem ${esc(nomes)}` : ''}). Os que você classificou à mão não mudam.</label>`,
+            okTexto: 'Remover',
+            onOk: async () => { await remover($('#rgDesfazer').checked); }
+          });
         };
       });
     }
@@ -2809,6 +2859,12 @@
   }
 
   /** Texto sugerido para a regra: as duas primeiras palavras que dizem algo ("ASSOCIACAO VEREDAS"). */
+  /** Pix ou TED que saiu para uma pessoa (a irmã, uma amiga): nem sempre é a mesma coisa, então não vira regra sozinho. */
+  function ehPixParaPessoa(tx) {
+    return tx.valor < 0 && /\bPIX\b|\bTED\b|TRANSF/.test(norm(tx.desc))
+      && !RE_EMPRESA.test(textoBusca(tx.desc)) && !RE_CNPJ.test(tx.desc) && !pareceMesmaTitularidade(norm(tx.desc));
+  }
+
   function sugerirTextoRegra(desc, tx) {
     let s = BolsoIA.textoRegra(desc, 2);
     // Se pulou palavras comuns do meio ("UNIMED BELO HORIZONTE COOPERAT" → "UNIMED COOPERAT"), o texto não
@@ -2845,7 +2901,7 @@
   }
 
   /** Cria (ou troca) a regra e aplica a todos os lançamentos parecidos que ela não classificou à mão. */
-  async function criarRegraEAplicar(texto, catId, subId, tx, pessoas = [], partes = {}) {
+  async function criarRegraEAplicar(texto, catId, subId, tx, pessoas = [], partes = {}, antes = null) {
     const chave = norm(texto);
     if (!chave || !getCat(catId)) return 0;
     const temPartes = Object.keys(partes).length > 0;
@@ -2855,6 +2911,7 @@
     await kvSet('regras', state.regras);
     const lista = parecidosComRegra(chave, tx);
     for (const x of lista) {
+      if (antes && !antes.has(x.id)) antes.set(x.id, JSON.parse(JSON.stringify(x)));
       Object.assign(x, { catId, subId, catOrigem: 'regra' });
       if (pessoas.length) {
         x.pessoas = [...new Set([...(x.pessoas || []), ...pessoas])];
@@ -2957,10 +3014,13 @@
           <input type="number" id="dlRat" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${tx && tx.rateioEsperado ? Number(tx.rateioEsperado).toFixed(2) : ''}">
         </label>
         <div class="sub-box" id="dlRegraBox" hidden>
-          <label>Regra: daqui para frente, descrição com o texto<input id="dlRegraTxt" maxlength="60" placeholder="apague para não criar regra"></label>
-          <label class="chk" id="dlRegraPesWrap" hidden><input type="checkbox" id="dlRegraPes"> Marcar também <b id="dlRegraPesNomes"></b> nos próximos</label>
-          <p id="dlRegraN" style="margin:0"></p>
-          <p class="mut" id="dlRegraEx" style="margin:0"></p>
+          <label class="chk"><input type="checkbox" id="dlRegraOn"> <span id="dlRegraOnTxt">Fazer o mesmo com os parecidos (os que já estão no app e os próximos)</span></label>
+          <div id="dlRegraCorpo">
+            <label>Parecidos: descrição com o texto<input id="dlRegraTxt" maxlength="60"></label>
+            <label class="chk" id="dlRegraPesWrap" hidden><input type="checkbox" id="dlRegraPes"> Marcar também <b id="dlRegraPesNomes"></b> nos parecidos</label>
+            <p id="dlRegraN" style="margin:0"></p>
+            <p class="mut" id="dlRegraEx" style="margin:0"></p>
+          </div>
         </div>
       `,
       onOpen: () => {
@@ -3058,6 +3118,9 @@
           };
         });
         $('#dlRegraPes').onchange = () => { marcouRegraPes = true; };
+        const pixPessoa = !!tx && ehPixParaPessoa(tx);
+        let marcouRegraOn = false;
+        $('#dlRegraOn').onchange = () => { marcouRegraOn = true; atualizar(); };
         const atualizar = () => {
           // Só ao trocar a categoria de um lançamento que já existia (o manual é dela, não vira regra),
           // ou ao marcar pessoa numa entrada (Pix do genitor: os próximos já vêm marcados).
@@ -3065,9 +3128,16 @@
           const mudouPes = chavePes() !== pesIni;
           $('#dlRegraBox').hidden = novo || ((dlCat.value === catIni && (dlSub.value || '') === subIni)
             && !(mudouPes && sel.length));
-          $('#dlRegraPesWrap').hidden = !sel.length;
+          // Só a pessoa mudou: o tique principal já é "marcar a pessoa nos parecidos".
+          const soPes = dlCat.value === catIni && (dlSub.value || '') === subIni;
+          $('#dlRegraOnTxt').textContent = soPes
+            ? `Marcar também ${nomesPessoas(sel)} nos parecidos (os que já estão no app e os próximos)`
+            : 'Fazer o mesmo com os parecidos (os que já estão no app e os próximos)';
+          // Entrada (pensão do pai): sim. Gasto só da pessoa (farmácia) ou Pix para alguém: só se ela ticar.
+          if (!marcouRegraOn) $('#dlRegraOn').checked = dlTipo.value === 'receita' || (!soPes && !pixPessoa);
+          $('#dlRegraCorpo').hidden = !$('#dlRegraOn').checked;
+          $('#dlRegraPesWrap').hidden = !sel.length || soPes;
           $('#dlRegraPesNomes').textContent = nomesPessoas(sel);
-          // Entrada (pensão): a regra também marca a pessoa; gasto: só se ela pedir (a farmácia não é sempre dele)
           if (!marcouRegraPes) $('#dlRegraPes').checked = dlTipo.value === 'receita';
           const lista = parecidosComRegra(txt.value, tx);
           $('#dlRegraN').textContent = lista.length
@@ -3097,6 +3167,10 @@
         const partesSel = partesDe({ partes: lerPartes() }, pessoasSel);
         const temPartes = Object.keys(partesSel).length > 0;
         const soPessoa = !!tx && tx.catId === catId && (tx.subId || '') === subId;
+        // Como estava antes de salvar (este lançamento e as regras), para o botão Desfazer
+        const antes = new Map();
+        if (tx) antes.set(tx.id, JSON.parse(JSON.stringify(tx)));
+        const regrasAntes = JSON.parse(JSON.stringify(state.regras));
         if (!data || !Number.isFinite(absVal) || absVal <= 0 || !desc) return false;
 
         let contaId = $('#dlConta').value;
@@ -3159,19 +3233,52 @@
           if (mudouConta) await kvSet('contas', state.contas);
         }
 
-        // Só a pessoa mudou (gasto do filho) e ela não pediu para marcar os próximos: não cria regra.
-        const aplicados = $('#dlRegraBox').hidden || (soPessoa && !$('#dlRegraPes').checked) ? 0
+        // Parecidos só com o tique; quando só a pessoa mudou, o tique já é marcar a pessoa.
+        const comParecidos = !$('#dlRegraBox').hidden && $('#dlRegraOn').checked;
+        const comPes = soPessoa || (!$('#dlRegraPesWrap').hidden && $('#dlRegraPes').checked);
+        const aplicados = !comParecidos ? 0
           : await criarRegraEAplicar($('#dlRegraTxt').value, catId, subId, tx,
-            ...(!$('#dlRegraPesWrap').hidden && $('#dlRegraPes').checked ? [pessoasSel, partesSel] : [[], {}]));
+            comPes ? pessoasSel : [], comPes ? partesSel : {}, antes);
         const soltos = desfazerEstornosSoltos();
         if (soltos.length) await dbPutLanc(soltos);
 
         treinarIA();
-        toast(aplicados ? `Salvo · e mais ${aplicados} ${aplicados === 1 ? 'lançamento parecido' : 'lançamentos parecidos'}`
-          : novo ? 'Lançamento salvo' : 'Alterações salvas');
+        const msg = aplicados ? `Salvo · e mais ${aplicados} ${aplicados === 1 ? 'parecido' : 'parecidos'}`
+          : novo ? 'Lançamento salvo' : 'Alterações salvas';
         render();
+        if (novo) toast(msg);
+        else toast(msg, { texto: 'Desfazer', fn: () => desfazerEdicao(antes, regrasAntes) });
       }
     });
+  }
+
+  /** Volta os lançamentos e as regras ao que eram antes de salvar (botão Desfazer do aviso). */
+  async function desfazerEdicao(antes, regrasAntes) {
+    const mud = [];
+    const contas = new Set();
+    for (const [id, velho] of antes) {
+      const cur = state.lancamentos.find(x => x.id === id);
+      if (!cur) continue;
+      contas.add(cur.contaId);
+      contas.add(velho.contaId);
+      for (const k of Object.keys(cur)) delete cur[k];
+      Object.assign(cur, velho);
+      mud.push(cur);
+    }
+    state.regras = regrasAntes;
+    await kvSet('regras', state.regras);
+    if (mud.length) await dbPutLanc(mud);
+    let mudouConta = false;
+    for (const cid of contas) {
+      const ct = getConta(cid);
+      if (ct && recalcularSaldoInicialPorExtrato(ct)) mudouConta = true;
+    }
+    if (mudouConta) await kvSet('contas', state.contas);
+    const soltos = desfazerEstornosSoltos();
+    if (soltos.length) await dbPutLanc(soltos);
+    treinarIA();
+    render();
+    toast(mud.length > 1 ? `Desfeito · ${mud.length} lançamentos voltaram` : 'Desfeito');
   }
 
   function abrirModalRateioEntrada(txEntrada) {

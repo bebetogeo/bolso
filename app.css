@@ -1121,6 +1121,7 @@ dialog#dlg::backdrop {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   text-align: center;
 }
+#toast .toast-bt { appearance: none; border: 0; background: transparent; color: #B9B3FF; font: inherit; font-weight: 700; padding: 4px 6px; margin-left: 6px; cursor: pointer; text-decoration: underline; }
 
 .saldo-big { font-size: clamp(1.9rem, 9vw, 2.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--pos); }
 .saldo-big.neg { color: var(--neg); }

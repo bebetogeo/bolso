@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.7.0';
+  const VERSAO = '2.7.1';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -1118,7 +1118,7 @@
     renderPrevisaoCard();
     renderRateioCard();
     renderFuturoCard(parcelasFuturasNoMes(state.mes));
-    renderHistoricoCard(meses, cores);
+    renderHistoricoCard();
     renderPessoasCard();
     renderCategoriasCard(res, cores);
     renderOrcamentoCard(res, state.mes === mesAtualStr());
@@ -1203,7 +1203,7 @@
   const mesNome = m => labelMes(m).split(' ')[0];
   const milhar = v => (v >= 0 ? '+' : '−') + (Math.abs(v) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil';
 
-  /** Bloco roxo do topo: quanto ela tem nas contas, quanto mudou no mês e a linha do saldo nos últimos meses. */
+  /** Bloco roxo do topo: quanto ela tem nas contas, quanto mudou no mês e o ritmo dos gastos do mês. */
   function renderSaldoCard(meses) {
     const el = $('#cardSaldo');
     const bancos = contasBanco();
@@ -1211,45 +1211,20 @@
     if (!bancos.length) return;
     const l = linhaSaldo(state.mes);
     const dif = round2(l.fim - l.ini);
-    // Saldo no fim de cada mês (o mês aberto, até hoje): um ponto por mês, com o valor em cima e o mês embaixo.
-    const pontos = meses.map(m => linhaSaldo(m).fim);
-    const lo = Math.min(...pontos);
-    const hi = Math.max(...pontos);
-    const y = v => (hi === lo ? 52 : Math.round(30 + (1 - (v - lo) / (hi - lo)) * 44));
-    // Desenha na largura real do bloco: no computador a linha estica, mas o texto fica do tamanho do celular.
-    const largura = Math.max(260, Math.round((el.clientWidth || 300) - 32));
-    const x = i => Math.round(26 + (i / Math.max(1, pontos.length - 1)) * (largura - 52));
-    const curto = v => (Math.abs(v) >= 1000
-      ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
-      : Math.round(v).toLocaleString('pt-BR'));
-    const grafico = pontos.length < 2 ? '' : `
-      <svg class="spark" viewBox="0 0 ${largura} 104" width="${largura}" height="104" aria-hidden="true">
-        <polyline points="${pontos.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/>
-        ${pontos.map((v, i) => `
-          <circle cx="${x(i)}" cy="${y(v)}" r="4.5" class="${i === pontos.length - 1 ? 'pt-ult' : 'pt'}"/>
-          <text x="${x(i)}" y="${y(v) - 11}" class="pt-v">${curto(v)}</text>
-          <text x="${x(i)}" y="98" class="pt-m">${esc(labelMesCurto(meses[i]))}</text>`).join('')}
-      </svg>`;
+    // Embaixo do saldo, o ritmo dos gastos do mês comparado com a média dos meses anteriores.
     el.innerHTML = `
       <div class="cd-top"><span class="cd-lb">Dinheiro nas contas</span>${bancos.length > 1 ? `<span class="cd-lb">${bancos.map(apelido).join(' + ')}</span>` : ''}</div>
       <p class="saldo-big num">${moed(l.fim)}</p>
       <span class="pilula ${dif < 0 ? 'p-neg' : 'p-pos'} num">${dif < 0 ? '−' : '+'}${moed(Math.abs(dif))} ${state.mes === mesAtualStr() ? 'neste mês' : `em ${mesNome(state.mes).toLowerCase()}`}</span>
-      ${grafico}`;
+      ${graficoRitmo()}`;
   }
 
   function renderEntrouSaiu(res) {
     const el = $('#cardES');
-    const ant = resumoMes(addMes(state.mes, -1));
-    let comp = '';
-    if (ant.saiu > 0) {
-      const pct = Math.round((res.saiu / ant.saiu - 1) * 100);
-      comp = Math.abs(pct) < 3 ? `igual a ${labelMesCurto(addMes(state.mes, -1))}` : `${Math.abs(pct)}% ${pct > 0 ? 'acima' : 'abaixo'} de ${labelMesCurto(addMes(state.mes, -1))}`;
-    }
     el.innerHTML = `
       <button type="button" class="cd cd-ent" data-tipo="ent"><span class="cd-lb">Entrou</span><span class="es-v num">${moed(res.entrou, true)}</span>
         <span class="cd-lb">${res.qtdEntrou} ${res.qtdEntrou === 1 ? 'entrada' : 'entradas'}${res.rendimentos > 0 ? ' + rendimentos' : ''}</span></button>
-      <button type="button" class="cd cd-sai" data-tipo="sai"><span class="cd-lb">Saiu</span><span class="es-v num">${moed(res.saiu, true)}</span>
-        <span class="cd-lb">${comp || `${res.qtdSaiu} ${res.qtdSaiu === 1 ? 'saída' : 'saídas'}`}</span></button>`;
+      <button type="button" class="cd cd-sai" data-tipo="sai"><span class="cd-lb">Saiu</span><span class="es-v num">${moed(res.saiu, true)}</span></button>`;
     $$('[data-tipo]', el).forEach(b => { b.onclick = () => irParaLancamentos({ tipo: b.dataset.tipo }); });
   }
 
@@ -1518,7 +1493,7 @@
     const fixasEnt = p.entra > 0 ? ` e ${moed(p.entra)} que entram todo mês` : '';
     const conta = p.previsto >= 0
       ? `Com ${moed(p.saldoHoje)} hoje${fixasEnt}, sobram <b class="num">${moed(p.previsto)}</b> mesmo sem novas entradas.`
-      : `Com ${moed(p.saldoHoje)} hoje${fixasEnt}, faltam <b class="num">${moed(-p.previsto)}</b> de entradas para fechar o mês no positivo.`;
+      : `Com ${moed(p.saldoHoje)} hoje${fixasEnt}, para a conta não ficar negativa até o fim do mês ainda precisa entrar <b class="num">${moed(-p.previsto)}</b>.`;
     const ents = [p.comEntradas.min - p.previsto, p.comEntradas.max - p.previsto].map(v => round2(v));
     const entrou = ents[1] > 0
       ? `<p class="pv-faixa">Nos últimos meses, do dia ${String(p.desde).padStart(2, '0')} ao fim do mês entraram ${ents[1] - ents[0] < 1 ? moed(ents[1]) : `de ${moed(ents[0])} a ${moed(ents[1])}`}.</p>` : '';
@@ -1736,47 +1711,73 @@
     });
   }
 
-  /** Últimos meses: entrou ao lado dos gastos empilhados por categoria; embaixo, quanto sobrou ou faltou. */
-  function renderHistoricoCard(meses, cores) {
-    const el = $('#histCard');
-    const dados = meses.map(m => ({ m, ...resumoMes(m) }));
-    if (state.histBase !== state.mes || !meses.includes(state.histSel)) {
-      state.histSel = state.mes;
-      state.histBase = state.mes;
+  /**
+   * Ritmo do mês: quanto já saiu em gastos até hoje, dia a dia, ao lado do que costumava ter saído
+   * até o mesmo dia nos meses anteriores (média de até 3). Mesma conta do "Para onde foi".
+   */
+  function renderHistoricoCard() {
+    // O gráfico do ritmo agora fica no bloco roxo do topo (renderSaldoCard).
+    $('#histCard').hidden = true;
+  }
+
+  function graficoRitmo() {
+    const ym = state.mes;
+    const atual = ym === mesAtualStr();
+    const diasDe = m => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0).getDate();
+    const nDias = diasDe(ym);
+    const hoje = atual ? Math.min(new Date().getDate(), nDias) : nDias;
+    const gastosDe = m => lancamentosDoMes(m).filter(tx => tx.valor < 0 && !ehMov(tx))
+      .map(tx => ({ dia: Number(tx.data.slice(8, 10)), v: valorLiquidoGasto(tx), cat: tx.catId || '' }));
+    const acum = (gs, dia) => gs.reduce((a, g) => a + (g.dia <= dia ? g.v : 0), 0);
+    const doMes = gastosDe(ym);
+    const ant = [1, 2, 3].map(k => addMes(ym, -k)).map(m => ({ m, gs: gastosDe(m) })).filter(x => x.gs.length >= 5);
+    // dia d de um mês mais curto conta até o último dia dele
+    const media = d => ant.length ? ant.reduce((a, x) => a + acum(x.gs, Math.min(d, diasDe(x.m))), 0) / ant.length : 0;
+    const cur = [];
+    for (let dd = 1; dd <= hoje; dd++) cur.push(acum(doMes, dd));
+    const med = [];
+    if (ant.length) for (let dd = 1; dd <= nDias; dd++) med.push(media(dd));
+    const curAte = cur[cur.length - 1] || 0;
+    const medAte = ant.length ? med[hoje - 1] : 0;
+    const max = Math.max(curAte, ...(med.length ? [med[med.length - 1]] : []), 1) * 1.1;
+    const X = dd => 20 + (nDias > 1 ? (dd - 1) / (nDias - 1) : 0) * 300;
+    const Y = v => 74 - (v / max) * 62;
+    const linha = arr => arr.map((v, i) => `${i ? 'L' : 'M'}${X(i + 1).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+    const nomeMes = mesNome(ym).toLowerCase();
+    const k = v => v >= 1000 ? `R$ ${String(Math.round(v / 100) / 10).replace('.', ',')} mil` : moed(v, true);
+
+    let aviso = '';
+    if (doMes.length && ant.length) {
+      const dif = curAte - medAte;
+      const pct = medAte ? dif / medAte : 0;
+      // o que mais puxou: categoria com a maior diferença até o mesmo dia
+      const porCat = (gs, dia) => { const o = {}; for (const g of gs) if (g.dia <= dia) o[g.cat] = (o[g.cat] || 0) + g.v; return o; };
+      const cAt = porCat(doMes, hoje);
+      const cMed = {};
+      for (const x of ant) for (const [c, v] of Object.entries(porCat(x.gs, Math.min(hoje, diasDe(x.m))))) cMed[c] = (cMed[c] || 0) + v / ant.length;
+      const puxou = Object.keys({ ...cAt, ...cMed }).filter(c => c)
+        .map(c => [c, (cAt[c] || 0) - (cMed[c] || 0)]).sort((a, b) => (dif >= 0 ? b[1] - a[1] : a[1] - b[1]))[0];
+      const nomeCat = puxou && Math.abs(puxou[1]) >= 50 ? getCat(puxou[0])?.nome : '';
+      if (Math.abs(pct) < 0.08) aviso = `<p class="rt-aviso">Ritmo parecido com o de sempre.</p>`;
+      else if (dif > 0) aviso = `<p class="rt-aviso acima">Ritmo acima do normal: ${moed(dif, true)} a mais que a média${atual ? ' até hoje' : ''}.${nomeCat ? ` O que mais puxou: ${esc(nomeCat)}.` : ''}</p>`;
+      else aviso = `<p class="rt-aviso abaixo">Ritmo abaixo do normal: ${moed(-dif, true)} a menos que a média${atual ? ' até hoje' : ''}.${nomeCat ? ` A maior economia: ${esc(nomeCat)}.` : ''}</p>`;
     }
-    const mx = Math.max(...dados.map(d => Math.max(d.entrou, d.gastos)), 1);
-    const h = v => Math.round((v / mx) * 92);
-    const top3 = Object.entries(cores).filter(([cid]) => cid !== '__sem').slice(0, 3).map(([, c]) => c);
-    const pilha = d => {
-      const grupos = {};
-      for (const [cid, v] of Object.entries(d.porCat)) {
-        const c = corDe(cores, cid);
-        grupos[c] = (grupos[c] || 0) + v;
-      }
-      return Object.entries(grupos).sort((a, b) => b[1] - a[1])
-        .map(([c, v]) => `<i style="height:${(v / d.gastos) * 100}%;background:${c}"></i>`).join('');
-    };
-    const sel = dados.find(d => d.m === state.histSel);
-    const difSel = round2(sel.entrou - sel.gastos);
-    const topSel = Object.entries(sel.porCat).filter(([cid]) => cid !== '__sem').sort((a, b) => b[1] - a[1])[0];
-    el.innerHTML = `
-      <p class="cd-tt">Últimos meses</p>
-      <div class="leg-mini">
-        <span><i class="mini-e"></i>Entrou</span>
-        <span><i class="mini-s">${top3.map(c => `<b style="background:${c}"></b>`).join('')}</i>Gastou</span>
-      </div>
-      <div class="hist2">${dados.map(d => `
-        <button type="button" class="mc ${d.m === state.histSel ? 'on' : ''}" data-mes="${d.m}" aria-label="${esc(labelMes(d.m))}">
-          <span class="pr"><span class="en" style="height:${h(d.entrou)}px"></span><span class="st" style="height:${h(d.gastos)}px">${d.gastos ? pilha(d) : ''}</span></span>
-          <span class="mm">${esc(labelMesCurto(d.m))}</span>
-          <span class="dl num ${d.entrou - d.gastos >= 0 ? 'okc' : 'ngc'}">${milhar(d.entrou - d.gastos)}</span>
-        </button>`).join('')}
-      </div>
-      <div class="res-mes">
-        <p><b>${esc(mesNome(sel.m))}</b> · <b class="${difSel >= 0 ? 'okc' : 'ngc'} num">${difSel >= 0 ? 'sobraram' : 'faltaram'} ${moed(Math.abs(difSel), true)}</b></p>
-        <p class="cd-lb num">Entrou ${moed(sel.entrou, true)} · gastou ${moed(sel.gastos, true)}${topSel ? ` · mais pesou: <b style="color:${corDe(cores, topSel[0])}">${esc(getCat(topSel[0])?.nome || '')}</b>` : ''}</p>
-      </div>`;
-    $$('.mc', el).forEach(b => { b.onclick = () => { state.histSel = b.dataset.mes; renderHistoricoCard(meses, cores); }; });
+
+    if (!doMes.length) return '';
+    return `
+      <svg class="rt-graf" viewBox="0 0 340 92" role="img" aria-label="Gastos acumulados de ${esc(nomeMes)}${ant.length ? ' comparados com a média dos meses anteriores' : ''}">
+        <line x1="20" y1="74" x2="320" y2="74" class="rt-eixo"/>
+        ${med.length ? `<path d="${linha(med)}" class="rt-med"/>` : ''}
+        <path d="${linha(cur)}" class="rt-cur"/>
+        <circle cx="${X(hoje).toFixed(1)}" cy="${Y(curAte).toFixed(1)}" r="4.5" class="rt-pt"/>
+        ${atual ? `<line x1="${X(hoje).toFixed(1)}" y1="${Y(curAte).toFixed(1)}" x2="${X(hoje).toFixed(1)}" y2="74" class="rt-hoje"/>` : ''}
+        <text x="${Math.min(X(hoje) + 7, 268).toFixed(1)}" y="${Math.max(Y(curAte) - 6, 12).toFixed(1)}" class="rt-val">${k(curAte)}</text>
+        <text x="20" y="88" class="rt-dia">1</text>
+        ${atual && hoje > 3 && hoje < nDias - 3 ? `<text x="${X(hoje).toFixed(1)}" y="88" text-anchor="middle" class="rt-dia">hoje (${hoje})</text>` : ''}
+        <text x="320" y="88" text-anchor="end" class="rt-dia">${nDias}</text>
+      </svg>
+      <div class="rt-leg"><span><i class="rt-l-cur"></i>gastos de ${esc(nomeMes)}</span>${ant.length ? `<span><i class="rt-l-med"></i>média de ${ant.length === 1 ? esc(mesNome(ant[0].m).toLowerCase()) : `${esc(labelMesCurto(ant[ant.length - 1].m))} a ${esc(labelMesCurto(ant[0].m))}`}</span>` : ''}</div>
+      ${aviso}`;
   }
 
   /* ========================================================================

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSAO = '2.7.1';
+  const VERSAO = '2.7.2';
   const DB_NOME = 'bolso-db';
   const DB_VER = 2;
 
@@ -233,6 +233,10 @@
       .replace(/\s+/g, ' ')
       .trim();
   }
+
+  // Campos de valor são texto com teclado numérico (type="number" recusa a vírgula quando o celular está
+  // em inglês). Mostram "1234,56" e são lidos por parseValor, que aceita vírgula ou ponto.
+  const campoValor = v => (Number.isFinite(Number(v)) ? Number(v).toFixed(2).replace('.', ',') : '');
 
   function parseValor(raw) {
     if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN;
@@ -2673,7 +2677,7 @@
       return `
         <div class="orc-l2">
           <span class="nm"><i class="bol" style="background:${cor}"></i>${esc(c.nome)}</span>
-          <input type="number" inputmode="decimal" min="0" step="10" placeholder="Sem limite" data-orc="${esc(c.id)}" value="${lim || ''}" aria-label="Limite de ${esc(c.nome)}">
+          <input type="text" inputmode="decimal" autocomplete="off" placeholder="Sem limite" data-orc="${esc(c.id)}" value="${lim ? String(lim).replace('.', ',') : ''}" aria-label="Limite de ${esc(c.nome)}">
           ${extra}
         </div>`;
     }).join('');
@@ -2687,7 +2691,7 @@
       renderOrcamento();
     };
     $$('input[data-orc]', box).forEach(inp => {
-      inp.onchange = async () => { await salvar(inp.dataset.orc, Math.max(0, Number(inp.value) || 0)); toast('Orçamento atualizado'); };
+      inp.onchange = async () => { await salvar(inp.dataset.orc, Math.max(0, round2(parseValor(inp.value) || 0))); toast('Orçamento atualizado'); };
     });
     $$('button[data-usar]', box).forEach(b => {
       b.onclick = async () => { await salvar(b.dataset.usar, Number(b.dataset.v)); toast('Limite preenchido pela média'); };
@@ -3000,7 +3004,7 @@
       html: `
         <div class="grid2">
           <label>Data<input type="date" id="dlData" required ${trava} value="${esc(tx ? tx.data : hojeStr())}"></label>
-          <label>Valor (R$)<input type="number" id="dlValor" inputmode="decimal" step="0.01" min="0.01" required ${trava} value="${tx ? Math.abs(tx.valor).toFixed(2) : ''}"></label>
+          <label>Valor (R$)<input type="text" id="dlValor" inputmode="decimal" autocomplete="off" placeholder="0,00" required ${trava} value="${tx ? campoValor(Math.abs(tx.valor)) : ''}"></label>
         </div>
         <label>Descrição<input id="dlDesc" maxlength="100" required placeholder="Ex.: Supermercado, Salário, Pix..." value="${esc(tx ? tx.desc : '')}"></label>
         <div class="grid2">
@@ -3032,7 +3036,7 @@
             <div id="dlPartes"></div>
           </div>` : ''}
         <label id="dlRatWrap">Valor a receber de rateio (opcional)
-          <input type="number" id="dlRat" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${tx && tx.rateioEsperado ? Number(tx.rateioEsperado).toFixed(2) : ''}">
+          <input type="text" id="dlRat" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${tx && tx.rateioEsperado ? campoValor(tx.rateioEsperado) : ''}">
         </label>
         <div class="sub-box" id="dlRegraBox" hidden>
           <label class="chk"><input type="checkbox" id="dlRegraOn"> <span id="dlRegraOnTxt">Fazer o mesmo com os parecidos (os que já estão no app e os próximos)</span></label>
@@ -3334,7 +3338,7 @@
           </select>
         </label>
         <label>Valor a abater (R$)
-          <input type="number" id="rtValor" inputmode="decimal" step="0.01" min="0.01" max="${dispEntrada}" value="${dispEntrada.toFixed(2)}">
+          <input type="text" id="rtValor" inputmode="decimal" autocomplete="off" value="${campoValor(dispEntrada)}">
         </label>
         <div class="split-preview" id="rtPrev"></div>
       `,
@@ -3437,7 +3441,7 @@
           </select>
         </label>
         <label id="ctSaldoWrap">Saldo inicial (R$)
-          <input type="number" id="ctSaldo" inputmode="decimal" step="0.01" value="${Number(conta.saldoInicial || 0).toFixed(2)}">
+          <input type="text" id="ctSaldo" inputmode="decimal" autocomplete="off" value="${campoValor(conta.saldoInicial || 0)}">
         </label>
         ${temExtrato ? `<label class="chk" id="ctAutoWrap"><input type="checkbox" id="ctAutoExtrato" ${!conta.saldoInicialManual ? 'checked' : ''}> Ajustar saldo inicial automaticamente pelo extrato OFX</label>` : ''}
         <label id="ctFechaWrap">Dia de fechamento da fatura
